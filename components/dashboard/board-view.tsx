@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { useRouter } from 'next/navigation'
 import { 
   Plus, 
   Search, 
@@ -8,7 +9,9 @@ import {
   Calendar, 
   TrendingUp, 
   Clock, 
-  Link as LinkIcon 
+  Link as LinkIcon,
+  Link2,
+  Loader2
 } from 'lucide-react'
 import Link from 'next/link'
 import { KanbanColumn } from '@/types'
@@ -19,8 +22,20 @@ interface BoardViewProps {
 }
 
 export function BoardView({ initialColumns, userId }: BoardViewProps) {
+  const router = useRouter()
   const [columns, setColumns] = React.useState<KanbanColumn[]>(initialColumns)
   const [searchQuery, setSearchQuery] = React.useState('')
+  
+  // États pour le formulaire d'importation de liens
+  const [showImportForm, setShowImportForm] = React.useState(false)
+  const [importUrl, setImportUrl] = React.useState('')
+  const [importSource, setImportSource] = React.useState<'indeed' | 'hellowork' | 'linkedin'>('indeed')
+  const [isImporting, setIsImporting] = React.useState(false)
+
+  // Synchronisation de l'état local quand le parent (Server Component) se rafraîchit
+  React.useEffect(() => {
+    setColumns(initialColumns)
+  }, [initialColumns])
 
   // Met à jour l'affichage en fonction de la recherche
   const filteredColumns = React.useMemo(() => {
@@ -38,16 +53,14 @@ export function BoardView({ initialColumns, userId }: BoardViewProps) {
     }))
   }, [columns, searchQuery])
 
-  // Statistiques calculées dynamiquement sur la base des vraies données
+  // Statistiques calculées dynamiquement
   const stats = React.useMemo(() => {
     const allJobs = columns.flatMap(col => col.jobApplications)
     const totalJobs = allJobs.length
     
-    // Entretiens actifs
     const interviewCol = columns.find(col => col.name.toLowerCase().includes('entretien'))
     const interviewCount = interviewCol ? interviewCol.jobApplications.length : 0
 
-    // Taux de réponse (tous sauf "À postuler")
     const toApplyCol = columns.find(col => col.name.toLowerCase().includes('à postuler'))
     const toApplyCount = toApplyCol ? toApplyCol.jobApplications.length : 0
     const appliedOrMoreCount = totalJobs - toApplyCount
@@ -64,9 +77,59 @@ export function BoardView({ initialColumns, userId }: BoardViewProps) {
       { title: "Total Candidatures", value: totalJobs.toString(), icon: Briefcase, color: "text-primary" },
       { title: "Entretiens Planifiés", value: interviewCount.toString(), icon: Calendar, color: "text-amber-500", highlight: interviewCount > 0 },
       { title: "Taux de Réponse", value: `${responseRate}%`, icon: TrendingUp, color: "text-emerald-500" },
-      { title: "Temps de réponse moyen", value: "N/A", icon: Clock, color: "text-primary" } // Sera alimenté plus tard
+      { title: "Temps de réponse moyen", value: "N/A", icon: Clock, color: "text-primary" }
     ]
   }, [columns])
+
+  // Gère la soumission du lien d'importation
+  const handleImportLink = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!importUrl.trim()) return
+
+    setIsImporting(true)
+    try {
+      // 1. Scrape le site sur le backend
+      const scrapeRes = await fetch('/api/scrape', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: importUrl, siteType: importSource })
+      })
+
+      if (!scrapeRes.ok) {
+        throw new Error('Erreur de scraping')
+      }
+
+      const { jobData } = await scrapeRes.json()
+
+      // 2. Enregistre l'offre dans le CRM via l'API unifiée
+      const saveRes = await fetch('/api/jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: jobData.title,
+          companyName: jobData.companyName,
+          location: jobData.location,
+          description: jobData.description,
+          url: jobData.url,
+          salary: jobData.salary,
+          source: jobData.source
+        })
+      })
+
+      if (saveRes.ok) {
+        setImportUrl('')
+        setShowImportForm(false)
+        router.refresh() // Rafraîchit les données du Server Component parent
+      } else {
+        alert("Erreur lors de l'enregistrement de l'offre dans le CRM.")
+      }
+    } catch (err) {
+      console.error(err)
+      alert("Une erreur est survenue lors de l'importation de l'offre.")
+    } finally {
+      setIsImporting(false)
+    }
+  }
 
   return (
     <main className="flex-1 flex flex-col overflow-hidden">
@@ -84,7 +147,15 @@ export function BoardView({ initialColumns, userId }: BoardViewProps) {
           />
         </div>
 
-        <div>
+        <div className="flex gap-3">
+          <button 
+            onClick={() => setShowImportForm(!showImportForm)}
+            className={`py-2.5 px-5 rounded-xl text-sm font-semibold flex items-center gap-2 border border-border-color transition-all duration-200 cursor-pointer ${showImportForm ? 'bg-primary/10 border-primary/20 text-purple-400' : 'bg-card-bg hover:bg-foreground/5'}`}
+          >
+            <Link2 size={16} />
+            Importer via Lien
+          </button>
+
           <button 
             onClick={() => alert("Ajouter une candidature manuelle en cours d'implémentation...")}
             className="bg-primary hover:bg-primary-hover text-white py-2.5 px-5 rounded-xl text-sm font-semibold flex items-center gap-2 shadow-lg shadow-primary/20 transition-all duration-200 cursor-pointer"
@@ -94,6 +165,48 @@ export function BoardView({ initialColumns, userId }: BoardViewProps) {
           </button>
         </div>
       </header>
+
+      {/* Formulaire d'importation collapsable */}
+      {showImportForm && (
+        <form onSubmit={handleImportLink} className="mx-10 mt-6 bg-card-bg border border-border-color p-5 rounded-2xl flex flex-col md:flex-row gap-4 items-end animate-fadeIn">
+          <div className="flex-1">
+            <label className="block text-xs font-semibold text-text-muted mb-2">Lien de l'offre d'emploi</label>
+            <div className="relative">
+              <Link2 size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted" />
+              <input 
+                type="url" 
+                required
+                value={importUrl}
+                onChange={(e) => setImportUrl(e.target.value)}
+                className="w-full bg-foreground/4 border border-border-color py-2.5 pl-11 pr-4 rounded-xl text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all duration-200"
+                placeholder="Ex: https://fr.indeed.com/viewjob... ou https://www.hellowork.com/..." 
+              />
+            </div>
+          </div>
+          
+          <div className="w-[180px]">
+            <label className="block text-xs font-semibold text-text-muted mb-2">Sélectionnez le Site</label>
+            <select
+              value={importSource}
+              onChange={(e) => setImportSource(e.target.value as any)}
+              className="w-full bg-foreground/4 border border-border-color py-2.5 px-4 rounded-xl text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all duration-200 cursor-pointer"
+            >
+              <option value="indeed">Indeed</option>
+              <option value="hellowork">HelloWork</option>
+              <option value="linkedin">LinkedIn</option>
+            </select>
+          </div>
+
+          <button 
+            type="submit"
+            disabled={isImporting}
+            className="bg-primary hover:bg-primary-hover text-white py-2.5 px-6 rounded-xl text-sm font-semibold flex items-center gap-2 transition-all duration-200 cursor-pointer disabled:opacity-50 h-[42px]"
+          >
+            {isImporting ? <Loader2 size={16} className="animate-spin" /> : <Link2 size={16} />}
+            Importer
+          </button>
+        </form>
+      )}
 
       {/* Ligne des KPIs */}
       <section className="flex gap-5 px-10 pt-6 pb-2">
@@ -147,7 +260,7 @@ export function BoardView({ initialColumns, userId }: BoardViewProps) {
                         className="flex items-center gap-2 text-text-muted hover:text-foreground transition-colors duration-150 group/link"
                       >
                         <div className="w-6 h-6 rounded-md flex items-center justify-center font-bold text-[10px] bg-black text-white">
-                          {job.company.name.charAt(0)}
+                          {job.company.name.charAt(0).toUpperCase()}
                         </div>
                         <span className="text-[11px] font-semibold group-hover/link:underline">{job.company.name}</span>
                       </Link>
