@@ -23,12 +23,15 @@ export class CompanyService {
     })
   }
 
-  /**
-   * Récupère les détails d'une entreprise avec toutes ses candidatures associées et son réseau de contacts
-   */
-  static async getById(id: string, userId: string) {
+  static async getById(idOrName: string, userId: string) {
     return db.company.findFirst({
-      where: { id, userId },
+      where: {
+        userId,
+        OR: [
+          { id: idOrName },
+          { name: { equals: idOrName, mode: 'insensitive' } }
+        ]
+      },
       include: {
         jobApplications: {
           where: { deletedAt: null },

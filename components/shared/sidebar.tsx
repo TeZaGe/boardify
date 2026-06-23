@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Briefcase, Building2, ClipboardList, Settings } from 'lucide-react'
+import { Briefcase, Building2, ClipboardList, Settings, Search } from 'lucide-react'
 import { ThemeToggle } from './theme-toggle'
 
 /**
@@ -13,6 +13,7 @@ export function Sidebar() {
 
   const menuItems = [
     { name: 'Tableau Kanban', href: '/dashboard', icon: Briefcase },
+    { name: 'Moteur de Recherche', href: '/search', icon: Search },
     { name: 'Entreprises', href: '/company', icon: Building2 },
     { name: 'Tâches & Rappels', href: '#', icon: ClipboardList },
     { name: 'Paramètres', href: '#', icon: Settings },

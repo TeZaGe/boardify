@@ -73,6 +73,86 @@ export class JobService {
   }
 
   /**
+   * Récupère ou crée un utilisateur de démonstration pour tester l'application en base
+   */
+  static async getOrCreateDemoUser() {
+    let user = await db.user.findFirst({
+      where: { email: 'demo@jobby.dev' }
+    })
+
+    if (!user) {
+      user = await db.user.create({
+        data: {
+          name: 'Thomas (Demo)',
+          email: 'demo@jobby.dev',
+          extensionToken: 'demo-extension-token-123456'
+        }
+      })
+    }
+
+    return user
+  }
+
+  /**
+   * Récupère les colonnes et candidatures associées d'un utilisateur en base.
+   * Initialise les colonnes par défaut si aucune n'existe.
+   */
+  static async getBoardData(userId: string) {
+    let columns = await db.column.findMany({
+      where: { userId },
+      include: {
+        jobApplications: {
+          where: { deletedAt: null },
+          include: {
+            company: true,
+            tags: true
+          },
+          orderBy: { order: 'asc' }
+        }
+      },
+      orderBy: { order: 'asc' }
+    })
+
+    // Si aucune colonne n'existe, on initialise le tableau par défaut
+    if (columns.length === 0) {
+      const defaultColumns = [
+        { name: "À postuler", order: 1, color: "bg-col-to-apply" },
+        { name: "Postulé", order: 2, color: "bg-col-applied" },
+        { name: "Entretien", order: 3, color: "bg-col-interview" },
+        { name: "Offres reçues", order: 4, color: "bg-col-offer" },
+        { name: "Refusé / Clôturé", order: 5, color: "bg-col-refused" }
+      ]
+
+      await db.column.createMany({
+        data: defaultColumns.map(col => ({
+          name: col.name,
+          order: col.order,
+          color: col.color,
+          userId
+        }))
+      })
+
+      // On re-récupère les colonnes créées
+      columns = await db.column.findMany({
+        where: { userId },
+        include: {
+          jobApplications: {
+            where: { deletedAt: null },
+            include: {
+              company: true,
+              tags: true
+            },
+            orderBy: { order: 'asc' }
+          }
+        },
+        orderBy: { order: 'asc' }
+      })
+    }
+
+    return columns
+  }
+
+  /**
    * Déplace une candidature vers une nouvelle colonne et enregistre l'historique
    */
   static async move(id: string, toColumnId: string, order: number) {
