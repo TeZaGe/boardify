@@ -1,5 +1,4 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
+// prisma/schema.prisma
 
 generator client {
   provider = "prisma-client-js"
@@ -10,7 +9,7 @@ datasource db {
 }
 
 // ==========================================
-// AUTHENTICATION MODELS (NextAuth.js v5 / Auth.js)
+// AUTHENTICATION MODELS (NextAuth.js v5)
 // ==========================================
 
 model User {
@@ -19,12 +18,14 @@ model User {
   email           String           @unique
   emailVerified   DateTime?
   image           String?
-  passwordHash    String?          // Hash du mot de passe pour la connexion classique
-  extensionToken  String?          @unique // Jeton unique d'authentification pour l'extension Chrome/Firefox
+  extensionToken  String?          @unique // Jeton pour l'extension Chrome/Firefox
   accounts        Account[]
   sessions        Session[]
-  columns         Column[]         // Colonnes personnalisées du tableau Kanban de l'utilisateur
-  jobApplications JobApplication[] // Candidatures de l'utilisateur
+  columns         Column[]
+  companies       Company[]        // Les entreprises suivies par l'utilisateur
+  contacts        Contact[]
+  tags            Tag[]
+  jobApplications JobApplication[]
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 }
@@ -74,12 +75,14 @@ model VerificationToken {
 
 model Column {
   id              String           @id @default(cuid())
-  name            String           // e.g., "À postuler", "Postulé", "Entretien", "Offre", "Refusé"
-  order           Int              // Position d'affichage de la colonne sur le Kanban
-  color           String?          // Couleur associée (classe CSS ou code hexa pour l'UI)
+  name            String
+  order           Int
+  color           String?
   userId          String
   user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   jobApplications JobApplication[]
+  historyFrom     JobApplicationHistory[] @relation("ColFrom")
+  historyTo       JobApplicationHistory[] @relation("ColTo")
 
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
@@ -88,44 +91,116 @@ model Column {
   @@unique([userId, order])
 }
 
+model Company {
+  id              String           @id @default(cuid())
+  name            String           // Nom de l'entreprise (ex: "Google", "Vercel")
+  website         String?          // Site web (ex: "https://google.com")
+  logoUrl         String?          // URL du logo (Clearbit API ou favicon)
+  userId          String
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobApplications JobApplication[] // Offres liées
+  contacts        Contact[]        // Recruteurs chez cette entreprise
+
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@unique([userId, name]) // Une entreprise unique par nom et par utilisateur
+  @@index([userId])
+}
+
 model JobApplication {
   id              String    @id @default(cuid())
   title           String    // Intitulé du poste
-  company         String    // Nom de l'entreprise
-  location        String?   // Paris, Télétravail, Lyon, etc.
-  description     String?   // Description de l'offre (texte ou markdown)
-  url             String?   // Lien vers l'annonce d'origine
-  salary          String?   // Rémunération indiquée (ex: "45k - 50k", "3200€/mois")
-  source          String?   // Source de l'offre ("LinkedIn", "Welcome to the Jungle", "Extension Chrome", etc.)
+  location        String?   // Paris, Remote, etc.
+  description     String?   // Contenu de l'offre (texte/markdown)
+  url             String?   // Lien vers l'annonce
+  salary          String?   // "45k - 50k", etc.
+  source          String?   // "LinkedIn", "Extension", etc.
   
-  // Contacts associés à cette offre (Recruteur, Manager, etc.)
-  contactName     String?
-  contactEmail    String?
-  contactPhone    String?
-  
+  // Relation avec l'Entreprise
+  companyId       String
+  company         Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
   // Positionnement Kanban
   columnId        String
   column          Column    @relation(fields: [columnId], references: [id], onDelete: Cascade)
-  order           Int       // Ordre d'affichage des cartes au sein de la colonne
-  
-  // Propriétaire de la candidature
+  order           Int
+
+  // Propriétaire
   userId          String
   user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   
-  // Données associées
+  // Relations enfants
+  contacts        Contact[]
+  documents       Document[]
+  tags            Tag[]
   notes           Note[]
   events          Event[]
+  history         JobApplicationHistory[]
 
+  deletedAt       DateTime? // Soft delete
+  
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  @@index([userId])
+  @@index([userId, deletedAt])
   @@index([columnId])
+  @@index([companyId])
+}
+
+model Contact {
+  id              String           @id @default(cuid())
+  name            String
+  role            String?          // Ex: "Recruteur", "Directeur Technique"
+  email           String?
+  phone           String?
+  
+  // Relation avec l'Entreprise
+  companyId       String?
+  company         Company?         @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  
+  userId          String
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobApplications JobApplication[]
+
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([userId])
+  @@index([companyId])
+}
+
+model Document {
+  id               String         @id @default(cuid())
+  name             String
+  url              String
+  type             String         // "CV", "COVER_LETTER", "OTHER"
+  jobApplicationId String
+  jobApplication   JobApplication @relation(fields: [jobApplicationId], references: [id], onDelete: Cascade)
+  
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([jobApplicationId])
+}
+
+model Tag {
+  id              String           @id @default(cuid())
+  name            String
+  color           String?
+  userId          String
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobApplications JobApplication[]
+
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@unique([userId, name])
 }
 
 model Note {
   id               String         @id @default(cuid())
-  content          String         // Contenu textuel/markdown de la note
+  content          String
   jobApplicationId String
   jobApplication   JobApplication @relation(fields: [jobApplicationId], references: [id], onDelete: Cascade)
   
@@ -137,15 +212,31 @@ model Note {
 
 model Event {
   id               String         @id @default(cuid())
-  title            String         // Titre de l'événement (ex: "Entretien RH", "Relancer par mail")
+  title            String
   type             EventType      @default(TASK)
-  date             DateTime       // Date et heure de l'événement
+  date             DateTime
   completed        Boolean        @default(false)
   jobApplicationId String
   jobApplication   JobApplication @relation(fields: [jobApplicationId], references: [id], onDelete: Cascade)
 
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
+
+  @@index([jobApplicationId])
+}
+
+model JobApplicationHistory {
+  id               String         @id @default(cuid())
+  jobApplicationId String
+  jobApplication   JobApplication @relation(fields: [jobApplicationId], references: [id], onDelete: Cascade)
+  
+  fromColumnId     String?
+  fromColumn       Column?        @relation("ColFrom", fields: [fromColumnId], references: [id], onDelete: SetNull)
+  
+  toColumnId       String
+  toColumn         Column         @relation("ColTo", fields: [toColumnId], references: [id], onDelete: Cascade)
+  
+  changedAt        DateTime       @default(now())
 
   @@index([jobApplicationId])
 }
