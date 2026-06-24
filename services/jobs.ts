@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { BoardService } from '@/services/boards'
 
 /**
  * Service gérant la logique métier des candidatures (CRUD, statistiques, transitions).
@@ -14,7 +15,8 @@ export class JobService {
         company: true,
         tags: true,
         notes: { orderBy: { createdAt: 'desc' } },
-        events: { orderBy: { date: 'asc' } }
+        events: { orderBy: { date: 'asc' } },
+        documents: true
       }
     })
   }
@@ -32,6 +34,7 @@ export class JobService {
     source?: string
     columnId: string
     order: number
+    appliedAt?: Date
   }) {
     // 1. Recherche ou crée l'entreprise associée à cet utilisateur
     let company = await db.company.findUnique({
@@ -64,7 +67,8 @@ export class JobService {
         columnId: data.columnId,
         order: data.order,
         userId,
-        companyId: company.id
+        companyId: company.id,
+        appliedAt: data.appliedAt
       },
       include: {
         company: true
@@ -73,33 +77,24 @@ export class JobService {
   }
 
   /**
-   * Récupère ou crée un utilisateur de démonstration pour tester l'application en base
+   * Récupère les colonnes et candidatures d'un tableau Kanban.
+   * - Si boardId est fourni, filtre par ce tableau.
+   * - Si boardId est null, utilise le tableau par défaut de l'utilisateur
+   *   (le crée si nécessaire via BoardService.getOrCreateDefault).
    */
-  static async getOrCreateDemoUser() {
-    let user = await db.user.findFirst({
-      where: { email: 'demo@jobby.dev' }
-    })
+  static async getBoardData(userId: string, boardId?: string | null) {
+    // Résoudre le boardId cible
+    let targetBoardId: string
 
-    if (!user) {
-      user = await db.user.create({
-        data: {
-          name: 'Thomas (Demo)',
-          email: 'demo@jobby.dev',
-          extensionToken: 'demo-extension-token-123456'
-        }
-      })
+    if (boardId) {
+      targetBoardId = boardId
+    } else {
+      const defaultBoard = await BoardService.getOrCreateDefault(userId)
+      targetBoardId = defaultBoard.id
     }
 
-    return user
-  }
-
-  /**
-   * Récupère les colonnes et candidatures associées d'un utilisateur en base.
-   * Initialise les colonnes par défaut si aucune n'existe.
-   */
-  static async getBoardData(userId: string) {
-    let columns = await db.column.findMany({
-      where: { userId },
+    const columns = await db.column.findMany({
+      where: { userId, boardId: targetBoardId },
       include: {
         jobApplications: {
           where: { deletedAt: null },
@@ -108,52 +103,14 @@ export class JobService {
             tags: true,
             notes: { orderBy: { createdAt: 'desc' } },
             events: { orderBy: { date: 'asc' } },
-            contacts: true
+            contacts: true,
+            documents: true
           },
           orderBy: { order: 'asc' }
         }
       },
       orderBy: { order: 'asc' }
     })
-
-    // Si aucune colonne n'existe, on initialise le tableau par défaut
-    if (columns.length === 0) {
-      const defaultColumns = [
-        { name: "À postuler", order: 1, color: "bg-col-to-apply" },
-        { name: "Postulé", order: 2, color: "bg-col-applied" },
-        { name: "Entretien", order: 3, color: "bg-col-interview" },
-        { name: "Offres reçues", order: 4, color: "bg-col-offer" },
-        { name: "Refusé / Clôturé", order: 5, color: "bg-col-refused" }
-      ]
-
-      await db.column.createMany({
-        data: defaultColumns.map(col => ({
-          name: col.name,
-          order: col.order,
-          color: col.color,
-          userId
-        }))
-      })
-
-      // On re-récupère les colonnes créées
-      columns = await db.column.findMany({
-        where: { userId },
-        include: {
-          jobApplications: {
-            where: { deletedAt: null },
-            include: {
-              company: true,
-              tags: true,
-              notes: { orderBy: { createdAt: 'desc' } },
-              events: { orderBy: { date: 'asc' } },
-              contacts: true
-            },
-            orderBy: { order: 'asc' }
-          }
-        },
-        orderBy: { order: 'asc' }
-      })
-    }
 
     return columns
   }
@@ -168,7 +125,7 @@ export class JobService {
     })
 
     if (!job) {
-      throw new Error("Candidature introuvable")
+      throw new Error('Candidature introuvable')
     }
 
     const fromColumnId = job.columnId

@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import { useRouter } from 'next/navigation'
+import * as XLSX from 'xlsx'
 import { 
   Plus, 
   Search, 
@@ -19,7 +20,14 @@ import {
   Trash2,
   Save,
   ExternalLink,
-  MessageSquare
+  MessageSquare,
+  FileSpreadsheet,
+  Settings,
+  Tag,
+  ChevronLeft,
+  ChevronRight,
+  FileText,
+  Upload
 } from 'lucide-react'
 import Link from 'next/link'
 import { KanbanColumn } from '@/types'
@@ -30,9 +38,12 @@ type ClientJob = KanbanColumn['jobApplications'][number]
 interface BoardViewProps {
   initialColumns: KanbanColumn[]
   userId: string
+  boardId?: string
+  boardName?: string
+  boardEmoji?: string
 }
 
-export function BoardView({ initialColumns, userId }: BoardViewProps) {
+export function BoardView({ initialColumns, userId, boardId, boardName, boardEmoji }: BoardViewProps) {
   const router = useRouter()
   
   // États de données et filtres
@@ -44,6 +55,19 @@ export function BoardView({ initialColumns, userId }: BoardViewProps) {
   const [importUrl, setImportUrl] = React.useState('')
   const [importSource, setImportSource] = React.useState<'indeed' | 'hellowork' | 'linkedin'>('indeed')
   const [isImporting, setIsImporting] = React.useState(false)
+
+  // États pour l'import de fichier Excel / CSV
+  const [showExcelImport, setShowExcelImport] = React.useState(false)
+  const [fileData, setFileData] = React.useState<any[][]>([])
+  const [hasHeaders, setHasHeaders] = React.useState(true)
+  const [startRow, setStartRow] = React.useState(2)
+  const [endRow, setEndRow] = React.useState(0)
+  const [columnFields, setColumnFields] = React.useState<string[]>([])
+  const [showMappingStep, setShowMappingStep] = React.useState(false)
+  const [isImportingFile, setIsImportingFile] = React.useState(false)
+  const [importProgress, setImportProgress] = React.useState(0)
+  const [importTotal, setImportTotal] = React.useState(0)
+  const [importErrors, setImportErrors] = React.useState<string[]>([])
 
   // États pour la modale de détails / édition
   const [selectedJob, setSelectedJob] = React.useState<ClientJob | null>(null)
@@ -63,6 +87,21 @@ export function BoardView({ initialColumns, userId }: BoardViewProps) {
   const [isSavingNote, setIsSavingNote] = React.useState(false)
   const [isSavingJob, setIsSavingJob] = React.useState(false)
   const [isArchiving, setIsArchiving] = React.useState(false)
+  const [isDeleting, setIsDeleting] = React.useState(false)
+
+  // Gestion des colonnes (étapes)
+  const [showColumnsModal, setShowColumnsModal] = React.useState(false)
+  const [newColumnName, setNewColumnName] = React.useState('')
+  const [editingColumnId, setEditingColumnId] = React.useState<string | null>(null)
+  const [editingColumnName, setEditingColumnName] = React.useState('')
+
+  // Gestion des étiquettes (tags)
+  const [selectedTagFilter, setSelectedTagFilter] = React.useState('')
+  const [editTags, setEditTags] = React.useState<string[]>([])
+  const [newTagInput, setNewTagInput] = React.useState('')
+
+  // Date d'envoi de la candidature
+  const [editAppliedAt, setEditAppliedAt] = React.useState('')
 
   // Synchronisation de l'état local quand le parent (Server Component) se rafraîchit
   React.useEffect(() => {
@@ -92,23 +131,51 @@ export function BoardView({ initialColumns, userId }: BoardViewProps) {
     setEditContactEmail(primaryContact?.email || '')
     setEditContactPhone(primaryContact?.phone || '')
     setNewNote('')
+    setEditTags(job.tags?.map(t => t.name) || [])
+    setNewTagInput('')
+    setEditAppliedAt(job.appliedAt ? new Date(job.appliedAt).toISOString().split('T')[0] : '')
   }
 
-  // Filtrage des colonnes selon la recherche
+  // Extrait tous les tags uniques pour le filtrage
+  const allUniqueTags = React.useMemo(() => {
+    const tags = new Set<string>()
+    columns.forEach(col => {
+      col.jobApplications.forEach(job => {
+        job.tags?.forEach(tag => {
+          if (tag.name) tags.add(tag.name)
+        })
+      })
+    })
+    return Array.from(tags)
+  }, [columns])
+
+  // Filtrage des colonnes selon la recherche et le tag sélectionné
   const filteredColumns = React.useMemo(() => {
-    if (!searchQuery.trim()) return columns
+    let result = columns
+    
+    if (selectedTagFilter) {
+      result = result.map(col => ({
+        ...col,
+        jobApplications: col.jobApplications.filter(job => 
+          job.tags?.some(tag => tag.name.toLowerCase() === selectedTagFilter.toLowerCase())
+        )
+      }))
+    }
+
+    if (!searchQuery.trim()) return result
 
     const query = searchQuery.toLowerCase()
-    return columns.map(col => ({
+    return result.map(col => ({
       ...col,
       jobApplications: col.jobApplications.filter(job => 
         job.title.toLowerCase().includes(query) ||
         job.company.name.toLowerCase().includes(query) ||
         (job.location && job.location.toLowerCase().includes(query)) ||
-        (job.source && job.source.toLowerCase().includes(query))
+        (job.source && job.source.toLowerCase().includes(query)) ||
+        job.tags?.some(tag => tag.name.toLowerCase().includes(query))
       )
     }))
-  }, [columns, searchQuery])
+  }, [columns, searchQuery, selectedTagFilter])
 
   // Statistiques globales du Kanban
   const stats = React.useMemo(() => {
@@ -137,6 +204,160 @@ export function BoardView({ initialColumns, userId }: BoardViewProps) {
       { title: "Temps de réponse moyen", value: "N/A", icon: Clock, color: "text-primary" }
     ]
   }, [columns])
+
+  // Gestionnaires pour les documents
+  const handleUploadDocument = async (e: React.ChangeEvent<HTMLInputElement>, type: 'CV' | 'COVER_LETTER' | 'OTHER') => {
+    const file = e.target.files?.[0]
+    if (!file || !selectedJob) return
+
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('type', type)
+
+    try {
+      const res = await fetch(`/api/jobs/${selectedJob.id}/documents`, {
+        method: 'POST',
+        body: formData
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        setSelectedJob(prev => {
+          if (!prev) return null
+          return {
+            ...prev,
+            documents: [...(prev.documents || []), data.document]
+          }
+        })
+        router.refresh()
+      } else {
+        alert("Erreur lors du téléversement du fichier.")
+      }
+    } catch (err) {
+      console.error(err)
+      alert("Erreur lors du téléversement.")
+    }
+  }
+
+  const handleDeleteDocument = async (docId: string) => {
+    if (!confirm("Voulez-vous vraiment supprimer ce document ?")) return
+
+    try {
+      const res = await fetch(`/api/documents/${docId}`, {
+        method: 'DELETE'
+      })
+
+      if (res.ok) {
+        setSelectedJob(prev => {
+          if (!prev) return null
+          return {
+            ...prev,
+            documents: prev.documents.filter(d => d.id !== docId)
+          }
+        })
+        router.refresh()
+      } else {
+        alert("Erreur lors de la suppression.")
+      }
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  // Gestionnaires pour les étapes (colonnes)
+  const handleMoveColumn = async (columnId: string, direction: 'left' | 'right') => {
+    const colIndex = columns.findIndex(c => c.id === columnId)
+    if (colIndex === -1) return
+    
+    const currentOrder = columns[colIndex].order
+    const newOrder = direction === 'left' ? currentOrder - 1 : currentOrder + 1
+    
+    if (newOrder < 1 || newOrder > columns.length) return
+    
+    try {
+      const res = await fetch(`/api/columns/${columnId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order: newOrder })
+      })
+      
+      if (res.ok) {
+        router.refresh()
+      } else {
+        alert("Erreur lors du déplacement de la colonne.")
+      }
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  const handleCreateColumn = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newColumnName.trim() || !boardId) return
+    
+    try {
+      const res = await fetch(`/api/boards/${boardId}/columns`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newColumnName, color: '#6b7280' })
+      })
+      
+      if (res.ok) {
+        setNewColumnName('')
+        router.refresh()
+      } else {
+        alert("Erreur lors de la création de la colonne.")
+      }
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  const handleDeleteColumn = async (columnId: string) => {
+    const col = columns.find(c => c.id === columnId)
+    if (!col) return
+    
+    if (col.jobApplications.length > 0) {
+      if (!confirm(`Attention: cette colonne contient ${col.jobApplications.length} candidature(s). La supprimer supprimera également toutes ces candidatures définitivement ! Voulez-vous continuer ?`)) {
+        return
+      }
+    } else {
+      if (!confirm("Voulez-vous vraiment supprimer cette colonne ?")) return
+    }
+    
+    try {
+      const res = await fetch(`/api/columns/${columnId}`, {
+        method: 'DELETE'
+      })
+      
+      if (res.ok) {
+        router.refresh()
+      } else {
+        alert("Erreur lors de la suppression de la colonne.")
+      }
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  const handleRenameColumn = async (columnId: string, newName: string) => {
+    if (!newName.trim()) return
+    try {
+      const res = await fetch(`/api/columns/${columnId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName })
+      })
+      if (res.ok) {
+        setEditingColumnId(null)
+        router.refresh()
+      } else {
+        alert("Erreur lors du renommage de la colonne.")
+      }
+    } catch (err) {
+      console.error(err)
+    }
+  }
 
   // ----------------------------------------------------
   // GESTION DU DRAG & DROP NATIVE HTML5
@@ -205,6 +426,210 @@ export function BoardView({ initialColumns, userId }: BoardViewProps) {
   }
 
   // ----------------------------------------------------
+  // OPERATIONS D'IMPORT DE FICHIER (EXCEL / CSV)
+  // ----------------------------------------------------
+  const getColLetter = (index: number) => {
+    let temp = index
+    let letter = ''
+    while (temp >= 0) {
+      letter = String.fromCharCode((temp % 26) + 65) + letter
+      temp = Math.floor(temp / 26) - 1
+    }
+    return letter
+  }
+
+  const handleHeadersToggle = (checked: boolean) => {
+    setHasHeaders(checked)
+    if (checked) {
+      setStartRow(2)
+      if (fileData.length > 0) {
+        const firstRow = fileData[0]
+        const mappings = firstRow.map(cell => {
+          const text = String(cell).toLowerCase()
+          if (/titre|poste|job|title|role/i.test(text)) return 'title'
+          if (/entreprise|company|societe|employeur/i.test(text)) return 'company'
+          if (/lieu|location|ville|adresse|city/i.test(text)) return 'location'
+          if (/salaire|remuneration|salary|compensation/i.test(text)) return 'salary'
+          if (/lien|url|link|annonce/i.test(text)) return 'url'
+          if (/description|desc|details/i.test(text)) return 'description'
+          if (/source/i.test(text)) return 'source'
+          return 'ignore'
+        })
+        setColumnFields(mappings)
+      }
+    } else {
+      setStartRow(1)
+      if (fileData.length > 0) {
+        setColumnFields(new Array(fileData[0].length).fill('ignore'))
+      }
+    }
+  }
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const reader = new FileReader()
+    reader.onload = (evt) => {
+      try {
+        const bstr = evt.target?.result
+        const workbook = XLSX.read(bstr, { type: 'binary' })
+        const sheetName = workbook.SheetNames[0]
+        const worksheet = workbook.Sheets[sheetName]
+        // Parse as array of arrays (header: 1)
+        const rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' })
+
+        if (rawRows.length === 0) {
+          alert("Le fichier Excel ou CSV est vide.")
+          return
+        }
+
+        setFileData(rawRows)
+        setEndRow(rawRows.length)
+        setStartRow(2)
+        setHasHeaders(true)
+
+        // Détecte automatiquement les correspondances sur la première ligne
+        const firstRow = rawRows[0] || []
+        const mappings = firstRow.map(cell => {
+          const text = String(cell).toLowerCase()
+          if (/titre|poste|job|title|role/i.test(text)) return 'title'
+          if (/entreprise|company|societe|employeur/i.test(text)) return 'company'
+          if (/lieu|location|ville|adresse|city/i.test(text)) return 'location'
+          if (/salaire|remuneration|salary|compensation/i.test(text)) return 'salary'
+          if (/lien|url|link|annonce/i.test(text)) return 'url'
+          if (/description|desc|details/i.test(text)) return 'description'
+          if (/source/i.test(text)) return 'source'
+          return 'ignore'
+        })
+        setColumnFields(mappings)
+        setShowMappingStep(true)
+      } catch (err) {
+        console.error(err)
+        alert("Erreur lors de la lecture du fichier.")
+      }
+    }
+    reader.readAsBinaryString(file)
+  }
+
+  const handleStartImport = async () => {
+    const titleIdx = columnFields.indexOf('title')
+    const companyIdx = columnFields.indexOf('company')
+
+    if (titleIdx === -1 || companyIdx === -1) {
+      alert("L'intitulé du poste et l'entreprise sont requis pour l'import.")
+      return
+    }
+
+    const startIdx = startRow - 1
+    const endIdx = Math.min(endRow, fileData.length)
+    const rowsToImport = fileData.slice(startIdx, endIdx)
+
+    setIsImportingFile(true)
+    setImportProgress(0)
+    setImportTotal(rowsToImport.length)
+    setImportErrors([])
+
+    for (let i = 0; i < rowsToImport.length; i++) {
+      const row = rowsToImport[i]
+      setImportProgress(i + 1)
+
+      let titleVal = ''
+      let companyVal = ''
+      let locationVal = ''
+      let salaryVal = ''
+      let urlVal = ''
+      let descriptionVal = ''
+      let sourceVal = ''
+
+      columnFields.forEach((field, colIdx) => {
+        const val = String(row[colIdx] || '').trim()
+        if (field === 'title') titleVal = val
+        if (field === 'company') companyVal = val
+        if (field === 'location') locationVal = val
+        if (field === 'salary') salaryVal = val
+        if (field === 'url') urlVal = val
+        if (field === 'description') descriptionVal = val
+        if (field === 'source') sourceVal = val
+      })
+
+      if (!titleVal || !companyVal) {
+        continue
+      }
+
+      const jobData = {
+        title: titleVal,
+        companyName: companyVal,
+        location: locationVal,
+        salary: salaryVal,
+        url: urlVal,
+        description: descriptionVal,
+        source: sourceVal || 'Fichier Excel'
+      }
+
+      let scraped = false
+      if (jobData.url) {
+        let siteType: 'indeed' | 'hellowork' | 'linkedin' | null = null
+        if (jobData.url.includes('indeed.')) siteType = 'indeed'
+        else if (jobData.url.includes('hellowork.com')) siteType = 'hellowork'
+        else if (jobData.url.includes('linkedin.com')) siteType = 'linkedin'
+
+        if (siteType) {
+          try {
+            const scrapeRes = await fetch('/api/scrape', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ url: jobData.url, siteType })
+            })
+
+            if (scrapeRes.ok) {
+              const { jobData: scrapedData } = await scrapeRes.json()
+              jobData.title = scrapedData.title || jobData.title
+              jobData.companyName = scrapedData.companyName || jobData.companyName
+              jobData.location = scrapedData.location || jobData.location
+              jobData.description = scrapedData.description || jobData.description
+              jobData.salary = scrapedData.salary || jobData.salary
+              jobData.source = scrapedData.source || jobData.source
+              scraped = true
+            }
+          } catch (e) {
+            console.error('Scraping error during import:', e)
+          }
+        }
+      }
+
+      try {
+        const saveRes = await fetch('/api/jobs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: jobData.title,
+            companyName: jobData.companyName,
+            location: jobData.location || null,
+            description: jobData.description || null,
+            url: jobData.url || null,
+            salary: jobData.salary || null,
+            source: jobData.source || (scraped ? 'Import Excel (Scrapé)' : 'Import Excel')
+          })
+        })
+
+        if (!saveRes.ok) {
+          throw new Error('Save error')
+        }
+      } catch (err) {
+        console.error(err)
+        setImportErrors(prev => [...prev, `Ligne ${startIdx + i + 1} (${titleVal}) : Échec d'importation.`])
+      }
+    }
+
+    setIsImportingFile(false)
+    setShowExcelImport(false)
+    setShowMappingStep(false)
+    setFileData([])
+    router.refresh()
+  }
+
+  // ----------------------------------------------------
   // OPERATIONS D'IMPORT & DE MODIFICATION
   // ----------------------------------------------------
   const handleImportLink = async (e: React.FormEvent) => {
@@ -269,7 +694,9 @@ export function BoardView({ initialColumns, userId }: BoardViewProps) {
           columnId: editColumnId,
           contactName: editContactName || null,
           contactEmail: editContactEmail || null,
-          contactPhone: editContactPhone || null
+          contactPhone: editContactPhone || null,
+          appliedAt: editAppliedAt || null,
+          tags: editTags
         })
       })
 
@@ -313,6 +740,30 @@ export function BoardView({ initialColumns, userId }: BoardViewProps) {
     }
   }
 
+  // Suppression définitive de l'offre
+  const handleDeleteJob = async () => {
+    if (!selectedJob) return
+    if (!confirm("Voulez-vous supprimer définitivement cette offre d'emploi ? Cette action est irréversible et supprimera tout l'historique et les notes.")) return
+
+    setIsDeleting(true)
+    try {
+      const res = await fetch(`/api/jobs/${selectedJob.id}`, {
+        method: 'DELETE'
+      })
+
+      if (res.ok) {
+        setSelectedJob(null)
+        router.refresh()
+      } else {
+        alert("Erreur lors de la suppression.")
+      }
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
   // Ajout de notes sur la carte
   const handleAddNote = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -341,33 +792,84 @@ export function BoardView({ initialColumns, userId }: BoardViewProps) {
     <main className="flex-1 flex flex-col overflow-hidden relative">
       
       {/* Barre du haut */}
-      <header className="h-[70px] border-b border-border-color flex items-center justify-between px-10">
-        <div className="relative">
-          <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted" />
-          <input 
-            type="text" 
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="bg-foreground/4 border border-border-color py-2.5 pl-11 pr-4 rounded-xl text-sm w-[320px] focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all duration-200"
-            placeholder="Rechercher une offre, entreprise, tag..." 
-          />
+      <header className="h-[64px] border-b border-border-color flex items-center justify-between px-6 gap-4 flex-shrink-0">
+        {/* Gauche : lien retour + nom du board + recherche */}
+        <div className="flex items-center gap-3 min-w-0">
+          <Link
+            href="/boards"
+            className="flex items-center gap-1.5 text-text-muted hover:text-foreground text-xs font-medium transition-colors flex-shrink-0"
+          >
+            <ChevronLeft size={14} />
+            Tableaux
+          </Link>
+          <span className="text-border-color text-xs">/</span>
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-base flex-shrink-0">{boardEmoji ?? '\ud83d\udccb'}</span>
+            <span className="font-display font-semibold text-sm truncate text-foreground">
+              {boardName ?? 'Mon tableau'}
+            </span>
+          </div>
+          <span className="text-border-color hidden sm:block">|</span>
+          <div className="relative hidden sm:block">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+            <input 
+              type="text" 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="bg-foreground/4 border border-border-color py-2 pl-9 pr-3 rounded-xl text-sm w-[240px] focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all duration-200"
+              placeholder="Rechercher..." 
+            />
+          </div>
+
+          {allUniqueTags.length > 0 && (
+            <div className="relative hidden lg:block">
+              <select
+                value={selectedTagFilter}
+                onChange={(e) => setSelectedTagFilter(e.target.value)}
+                className="bg-foreground/4 border border-border-color py-2 px-3 rounded-xl text-xs text-foreground focus:outline-none focus:border-primary cursor-pointer transition-all duration-200"
+              >
+                <option value="">Tous les tags</option>
+                {allUniqueTags.map(tag => (
+                  <option key={tag} value={tag}>{tag}</option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
-        <div className="flex gap-3">
+        {/* Droite : actions */}
+        <div className="flex gap-2 flex-shrink-0">
           <button 
-            onClick={() => setShowImportForm(!showImportForm)}
-            className={`py-2.5 px-5 rounded-xl text-sm font-semibold flex items-center gap-2 border border-border-color transition-all duration-200 cursor-pointer ${showImportForm ? 'bg-primary/10 border-primary/20 text-purple-400' : 'bg-card-bg hover:bg-foreground/5'}`}
+            onClick={() => setShowColumnsModal(true)}
+            className="py-2 px-4 rounded-xl text-xs font-semibold flex items-center gap-2 border border-border-color bg-card-bg hover:bg-foreground/5 text-foreground transition-all duration-200 cursor-pointer"
+            title="Gérer les étapes"
           >
-            <Link2 size={16} />
-            Importer via Lien
+            <Settings size={14} />
+            <span className="hidden sm:inline">Étapes</span>
           </button>
 
           <button 
-            onClick={() => alert("Ajouter une candidature manuelle en cours d'implémentation...")}
-            className="bg-primary hover:bg-primary-hover text-white py-2.5 px-5 rounded-xl text-sm font-semibold flex items-center gap-2 shadow-lg shadow-primary/20 transition-all duration-200 cursor-pointer"
+            onClick={() => {
+              setShowImportForm(!showImportForm)
+              setShowExcelImport(false)
+            }}
+            className={`py-2 px-4 rounded-xl text-xs font-semibold flex items-center gap-2 border transition-all duration-200 cursor-pointer ${showImportForm ? 'bg-primary/10 border-primary/20 text-purple-400' : 'border-border-color bg-card-bg hover:bg-foreground/5'}`}
+            title="Importer via lien"
           >
-            <Plus size={16} strokeWidth={2.5} />
-            Nouvelle offre
+            <Link2 size={14} />
+            <span className="hidden sm:inline">Lien</span>
+          </button>
+
+          <button 
+            onClick={() => {
+              setShowExcelImport(!showExcelImport)
+              setShowImportForm(false)
+            }}
+            className={`py-2 px-4 rounded-xl text-xs font-semibold flex items-center gap-2 border transition-all duration-200 cursor-pointer ${showExcelImport ? 'bg-primary/10 border-primary/20 text-purple-400' : 'border-border-color bg-card-bg hover:bg-foreground/5'}`}
+            title="Importer Excel/CSV"
+          >
+            <FileSpreadsheet size={14} />
+            <span className="hidden sm:inline">Excel</span>
           </button>
         </div>
       </header>
@@ -395,11 +897,11 @@ export function BoardView({ initialColumns, userId }: BoardViewProps) {
             <select
               value={importSource}
               onChange={(e) => setImportSource(e.target.value as any)}
-              className="w-full bg-foreground/4 border border-border-color py-2.5 px-4 rounded-xl text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all duration-200 cursor-pointer"
+              className="w-full bg-foreground/4 border border-border-color py-2.5 px-4 rounded-xl text-sm text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all duration-200 cursor-pointer"
             >
-              <option value="indeed">Indeed</option>
-              <option value="hellowork">HelloWork</option>
-              <option value="linkedin">LinkedIn</option>
+              <option value="indeed" className="bg-bg-side text-foreground">Indeed</option>
+              <option value="hellowork" className="bg-bg-side text-foreground">HelloWork</option>
+              <option value="linkedin" className="bg-bg-side text-foreground">LinkedIn</option>
             </select>
           </div>
 
@@ -412,6 +914,194 @@ export function BoardView({ initialColumns, userId }: BoardViewProps) {
             Importer
           </button>
         </form>
+      )}
+
+      {/* Formulaire d'importation Excel / CSV autonome */}
+      {showExcelImport && (
+        <div className="mx-10 mt-6 bg-card-bg border border-border-color p-6 rounded-2xl animate-fadeIn text-left">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-sm font-bold flex items-center gap-2 text-foreground">
+              <FileSpreadsheet size={18} className="text-primary" />
+              Importer des offres via fichier Excel ou CSV
+            </h3>
+            <button 
+              onClick={() => {
+                setShowExcelImport(false)
+                setShowMappingStep(false)
+                setFileData([])
+              }}
+              className="text-text-muted hover:text-foreground cursor-pointer"
+            >
+              <X size={16} />
+            </button>
+          </div>
+
+          {!showMappingStep ? (
+            <div className="border border-dashed border-border-color rounded-xl p-8 text-center bg-foreground/2 hover:bg-foreground/3 transition-all duration-200">
+              <input
+                type="file"
+                accept=".xlsx, .xls, .csv"
+                onChange={handleFileUpload}
+                id="excel-file-upload"
+                className="hidden"
+              />
+              <label htmlFor="excel-file-upload" className="cursor-pointer flex flex-col items-center gap-3">
+                <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary shadow-lg shadow-primary/10">
+                  <FileSpreadsheet size={24} />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold">Cliquez pour téléverser votre fichier</p>
+                  <p className="text-xs text-text-muted mt-1">Accepte les formats .xlsx, .xls, et .csv</p>
+                </div>
+              </label>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-5">
+              
+              {/* Options de ligne et intervalle */}
+              <div className="flex flex-wrap items-center gap-6 bg-foreground/2 border border-border-color p-4 rounded-xl">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="excel-has-headers"
+                    checked={hasHeaders}
+                    onChange={(e) => handleHeadersToggle(e.target.checked)}
+                    className="w-4 h-4 text-primary bg-foreground/4 border-border-color rounded focus:ring-primary/20 cursor-pointer"
+                  />
+                  <label htmlFor="excel-has-headers" className="text-xs font-semibold text-text-main cursor-pointer select-none">
+                    La première ligne contient les en-têtes de colonnes
+                  </label>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-semibold text-text-muted">Intervalle de lignes :</span>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="number"
+                      min={hasHeaders ? 2 : 1}
+                      max={endRow}
+                      value={startRow}
+                      onChange={(e) => setStartRow(Math.max(hasHeaders ? 2 : 1, parseInt(e.target.value) || (hasHeaders ? 2 : 1)))}
+                      className="w-16 bg-foreground/4 border border-border-color py-1 px-2 rounded-lg text-xs text-center text-foreground font-semibold focus:outline-none focus:border-primary"
+                    />
+                    <span className="text-xs text-text-muted">à</span>
+                    <input
+                      type="number"
+                      min={startRow}
+                      max={fileData.length}
+                      value={endRow}
+                      onChange={(e) => setEndRow(Math.min(fileData.length, Math.max(startRow, parseInt(e.target.value) || fileData.length)))}
+                      className="w-16 bg-foreground/4 border border-border-color py-1 px-2 rounded-lg text-xs text-center text-foreground font-semibold focus:outline-none focus:border-primary"
+                    />
+                    <span className="text-xs text-text-muted">(Total: {fileData.length} lignes)</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Table de prévisualisation avec dropdowns de mapping au-dessus de chaque colonne */}
+              <div className="flex flex-col gap-2">
+                <span className="text-xs font-semibold text-text-muted">Prévisualisation du fichier & Correspondance des colonnes :</span>
+                <div className="border border-border-color rounded-xl overflow-hidden bg-foreground/2">
+                  <div className="overflow-x-auto max-h-[300px]">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-foreground/5 border-b border-border-color">
+                          <th className="p-3 font-semibold text-text-muted w-14 text-center">Ligne</th>
+                          {columnFields.map((field, colIdx) => (
+                            <th key={colIdx} className="p-3 min-w-[160px] border-r border-border-color last:border-0 font-sans">
+                              <div className="flex flex-col gap-1.5">
+                                <span className="font-semibold text-text-muted uppercase text-[9px] tracking-wider font-display">
+                                  {hasHeaders && fileData[0] ? String(fileData[0][colIdx] || '') : `Colonne ${getColLetter(colIdx)}`}
+                                </span>
+                                <select
+                                  value={field}
+                                  onChange={(e) => {
+                                    const nextFields = [...columnFields]
+                                    nextFields[colIdx] = e.target.value
+                                    setColumnFields(nextFields)
+                                  }}
+                                  className="w-full bg-bg-side border border-border-color py-1 px-2 rounded-md font-medium text-foreground focus:outline-none cursor-pointer text-xs"
+                                >
+                                  <option value="ignore" className="bg-bg-side text-foreground">❌ Ignorer</option>
+                                  <option value="title" className="bg-bg-side text-foreground">💼 Poste (Requis)</option>
+                                  <option value="company" className="bg-bg-side text-foreground">🏢 Entreprise (Requis)</option>
+                                  <option value="location" className="bg-bg-side text-foreground">📍 Lieu</option>
+                                  <option value="salary" className="bg-bg-side text-foreground">💰 Salaire</option>
+                                  <option value="url" className="bg-bg-side text-foreground">🔗 Lien</option>
+                                  <option value="description" className="bg-bg-side text-foreground">📝 Description</option>
+                                  <option value="source" className="bg-bg-side text-foreground">📣 Source</option>
+                                </select>
+                              </div>
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {fileData.slice(hasHeaders ? 1 : 0, hasHeaders ? 6 : 5).map((row, rowIdx) => (
+                          <tr key={rowIdx} className="border-b border-border-color/50 last:border-0 hover:bg-foreground/1">
+                            <td className="p-3 text-center text-text-muted bg-foreground/3 border-r border-border-color font-medium">
+                              {rowIdx + (hasHeaders ? 2 : 1)}
+                            </td>
+                            {columnFields.map((_, colIdx) => (
+                              <td key={colIdx} className="p-3 truncate max-w-[200px] border-r border-border-color/50 last:border-0 text-text-main font-medium font-sans">
+                                {String(row[colIdx] || '')}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+
+              {isImportingFile ? (
+                <div className="flex flex-col gap-2 mt-2">
+                  <div className="flex justify-between text-xs font-semibold">
+                    <span className="text-primary flex items-center gap-1.5">
+                      <Loader2 size={12} className="animate-spin" />
+                      Importation de la ligne {importProgress} sur {importTotal}...
+                    </span>
+                    <span>{Math.round((importProgress / importTotal) * 100)}%</span>
+                  </div>
+                  <div className="w-full h-1.5 bg-foreground/5 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-primary transition-all duration-300"
+                      style={{ width: `${(importProgress / importTotal) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="flex gap-3 justify-end mt-2">
+                  <button
+                    onClick={() => {
+                      setShowMappingStep(false)
+                      setFileData([])
+                    }}
+                    className="bg-foreground/5 hover:bg-foreground/10 border border-border-color py-2 px-4 rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer text-text-main"
+                  >
+                    Changer de fichier
+                  </button>
+                  <button
+                    onClick={handleStartImport}
+                    className="bg-primary hover:bg-primary-hover text-white py-2.5 px-5 rounded-xl text-xs font-bold shadow-lg shadow-primary/20 transition-all duration-200 cursor-pointer"
+                  >
+                    Lancer l'importation ({Math.max(0, endRow - startRow + 1)} lignes)
+                  </button>
+                </div>
+              )}
+
+              {importErrors.length > 0 && (
+                <div className="bg-red-500/5 border border-red-500/10 rounded-xl p-3 text-red-400 text-xs mt-2 max-h-[100px] overflow-y-auto">
+                  <p className="font-semibold mb-1">Erreurs lors de l'import :</p>
+                  <ul className="list-disc pl-4 space-y-1">
+                    {importErrors.map((err, idx) => <li key={idx}>{err}</li>)}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       )}
 
       {/* Ligne des KPIs */}
@@ -439,17 +1129,38 @@ export function BoardView({ initialColumns, userId }: BoardViewProps) {
             key={col.id} 
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => handleDrop(e, col.id)}
-            className="w-[320px] min-w-[320px] bg-foreground/3 border border-border-color rounded-[20px] flex flex-col p-4 transition-colors duration-150"
+            className="w-[320px] min-w-[320px] bg-foreground/3 border border-border-color rounded-[20px] flex flex-col p-4 transition-colors duration-150 group/col"
           >
             
             <div className="flex items-center justify-between mb-4 px-1">
-              <span className="flex items-center gap-2.5 font-semibold text-sm">
+              <div className="flex items-center gap-2">
                 <span className={`w-2.5 h-2.5 rounded-full ${col.color || 'bg-col-to-apply'}`} />
-                {col.name}
-              </span>
-              <span className="bg-foreground/5 border border-border-color px-2.5 py-0.5 rounded-full text-[11px] text-text-muted">
-                {col.jobApplications.length}
-              </span>
+                <span className="font-semibold text-sm">{col.name}</span>
+                <span className="bg-foreground/5 border border-border-color px-2 py-0.5 rounded-full text-[10px] text-text-muted font-bold ml-1">
+                  {col.jobApplications.length}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-0.5 opacity-0 group-hover/col:opacity-100 transition-opacity duration-150">
+                {col.order > 1 && (
+                  <button
+                    onClick={() => handleMoveColumn(col.id, 'left')}
+                    className="p-1 rounded hover:bg-foreground/5 text-text-muted hover:text-foreground cursor-pointer"
+                    title="Déplacer à gauche"
+                  >
+                    <ChevronLeft size={14} />
+                  </button>
+                )}
+                {col.order < columns.length && (
+                  <button
+                    onClick={() => handleMoveColumn(col.id, 'right')}
+                    className="p-1 rounded hover:bg-foreground/5 text-text-muted hover:text-foreground cursor-pointer"
+                    title="Déplacer à droite"
+                  >
+                    <ChevronRight size={14} />
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="flex-1 flex flex-col gap-3 overflow-y-auto pr-1">
@@ -521,7 +1232,11 @@ export function BoardView({ initialColumns, userId }: BoardViewProps) {
                           {job.source || 'Manuel'}
                         </div>
                       )}
-                      <span>{new Date(job.createdAt).toLocaleDateString('fr-FR')}</span>
+                      <span>
+                        {job.appliedAt 
+                          ? `Envoyé le ${new Date(job.appliedAt).toLocaleDateString('fr-FR')}` 
+                          : new Date(job.createdAt).toLocaleDateString('fr-FR')}
+                      </span>
                     </div>
 
                   </div>
@@ -599,18 +1314,27 @@ export function BoardView({ initialColumns, userId }: BoardViewProps) {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-3 gap-4">
                   <div>
                     <label className="block text-[11px] font-semibold text-text-muted mb-1.5">Étape (Colonne Kanban)</label>
                     <select
                       value={editColumnId}
                       onChange={(e) => setEditColumnId(e.target.value)}
-                      className="w-full bg-foreground/4 border border-border-color py-2 px-3 rounded-lg text-sm focus:outline-none focus:border-primary cursor-pointer transition-colors"
+                      className="w-full bg-foreground/4 border border-border-color py-2.5 px-3 rounded-lg text-sm text-foreground focus:outline-none focus:border-primary cursor-pointer transition-colors"
                     >
                       {columns.map(c => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
+                        <option key={c.id} value={c.id} className="bg-bg-side text-foreground">{c.name}</option>
                       ))}
                     </select>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-text-muted mb-1.5">Date d'envoi</label>
+                    <input 
+                      type="date"
+                      value={editAppliedAt}
+                      onChange={(e) => setEditAppliedAt(e.target.value)}
+                      className="w-full bg-foreground/4 border border-border-color py-2 px-3 rounded-lg text-sm text-foreground focus:outline-none focus:border-primary transition-colors"
+                    />
                   </div>
                   <div>
                     <label className="block text-[11px] font-semibold text-text-muted mb-1.5">Lien de l'offre</label>
@@ -627,12 +1351,162 @@ export function BoardView({ initialColumns, userId }: BoardViewProps) {
                           href={editUrl} 
                           target="_blank" 
                           rel="noreferrer"
-                          className="bg-foreground/5 hover:bg-primary/10 border border-border-color text-text-muted hover:text-primary p-2 rounded-lg flex items-center justify-center"
+                          className="bg-foreground/5 hover:bg-primary/10 border border-border-color text-text-muted hover:text-primary p-2 rounded-lg flex items-center justify-center animate-pulse-subtle"
                         >
                           <ExternalLink size={16} />
                         </a>
                       )}
                     </div>
+                  </div>
+                </div>
+
+                {/* Section Étiquettes / Tags */}
+                <div className="border-t border-border-color pt-4 mt-2">
+                  <h4 className="text-xs font-bold text-text-main mb-3 flex items-center gap-1.5">
+                    <Tag size={14} className="text-primary" />
+                    Étiquettes / Tags
+                  </h4>
+                  
+                  <div className="flex flex-wrap gap-1.5 mb-2.5">
+                    {editTags.length === 0 ? (
+                      <span className="text-[11px] text-text-muted italic">Aucune étiquette</span>
+                    ) : (
+                      editTags.map((tag, index) => (
+                        <span key={index} className="text-[11px] bg-primary/15 border border-primary/30 text-purple-400 px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
+                          {tag}
+                          <button
+                            type="button"
+                            onClick={() => setEditTags(editTags.filter(t => t !== tag))}
+                            className="hover:text-red-400 cursor-pointer font-bold text-xs"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))
+                    )}
+                  </div>
+
+                  <div className="flex gap-2 max-w-[280px]">
+                    <input
+                      type="text"
+                      value={newTagInput}
+                      onChange={(e) => setNewTagInput(e.target.value)}
+                      placeholder="Ajouter un tag..."
+                      className="flex-1 bg-foreground/4 border border-border-color py-1.5 px-3 rounded-lg text-xs focus:outline-none focus:border-primary transition-colors"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          if (newTagInput.trim() && !editTags.includes(newTagInput.trim())) {
+                            setEditTags([...editTags, newTagInput.trim()])
+                            setNewTagInput('')
+                          }
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (newTagInput.trim() && !editTags.includes(newTagInput.trim())) {
+                          setEditTags([...editTags, newTagInput.trim()])
+                          setNewTagInput('')
+                        }
+                      }}
+                      className="bg-primary/10 border border-primary/20 hover:bg-primary/15 text-purple-400 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer"
+                    >
+                      Ajouter
+                    </button>
+                  </div>
+                </div>
+
+                {/* Section Documents (CV & Lettres de motivation) */}
+                <div className="border-t border-border-color pt-4 mt-2">
+                  <h4 className="text-xs font-bold text-text-main mb-3 flex items-center gap-1.5">
+                    <FileText size={14} className="text-primary" />
+                    CV & Lettre de motivation
+                  </h4>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    
+                    {/* Curriculum Vitae */}
+                    <div className="bg-foreground/2 border border-border-color rounded-xl p-3 flex flex-col justify-between h-[90px]">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[11px] font-bold text-text-muted">Curriculum Vitae (CV)</span>
+                        {selectedJob.documents?.find(d => d.type === 'CV') && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteDocument(selectedJob.documents.find(d => d.type === 'CV')!.id)}
+                            className="text-text-muted hover:text-red-400 p-0.5 rounded cursor-pointer transition-colors"
+                            title="Supprimer le CV"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        )}
+                      </div>
+
+                      {selectedJob.documents?.find(d => d.type === 'CV') ? (
+                        <a
+                          href={selectedJob.documents.find(d => d.type === 'CV')!.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-xs font-medium text-purple-400 hover:underline flex items-center gap-1"
+                        >
+                          <ExternalLink size={12} />
+                          <span className="truncate max-w-[150px]">{selectedJob.documents.find(d => d.type === 'CV')!.name}</span>
+                        </a>
+                      ) : (
+                        <label className="flex items-center gap-1.5 text-xs text-text-muted cursor-pointer hover:text-foreground">
+                          <Upload size={12} />
+                          <span>Choisir un fichier CV</span>
+                          <input
+                            type="file"
+                            accept=".pdf,.doc,.docx"
+                            className="hidden"
+                            onChange={(e) => handleUploadDocument(e, 'CV')}
+                          />
+                        </label>
+                      )}
+                    </div>
+
+                    {/* Lettre de motivation */}
+                    <div className="bg-foreground/2 border border-border-color rounded-xl p-3 flex flex-col justify-between h-[90px]">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[11px] font-bold text-text-muted">Lettre de motivation (LM)</span>
+                        {selectedJob.documents?.find(d => d.type === 'COVER_LETTER') && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteDocument(selectedJob.documents.find(d => d.type === 'COVER_LETTER')!.id)}
+                            className="text-text-muted hover:text-red-400 p-0.5 rounded cursor-pointer transition-colors"
+                            title="Supprimer la LM"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        )}
+                      </div>
+
+                      {selectedJob.documents?.find(d => d.type === 'COVER_LETTER') ? (
+                        <a
+                          href={selectedJob.documents.find(d => d.type === 'COVER_LETTER')!.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-xs font-medium text-purple-400 hover:underline flex items-center gap-1"
+                        >
+                          <ExternalLink size={12} />
+                          <span className="truncate max-w-[150px]">{selectedJob.documents.find(d => d.type === 'COVER_LETTER')!.name}</span>
+                        </a>
+                      ) : (
+                        <label className="flex items-center gap-1.5 text-xs text-text-muted cursor-pointer hover:text-foreground">
+                          <Upload size={12} />
+                          <span>Choisir un fichier Lettre</span>
+                          <input
+                            type="file"
+                            accept=".pdf,.doc,.docx"
+                            className="hidden"
+                            onChange={(e) => handleUploadDocument(e, 'COVER_LETTER')}
+                          />
+                        </label>
+                      )}
+                    </div>
+
                   </div>
                 </div>
 
@@ -679,16 +1553,28 @@ export function BoardView({ initialColumns, userId }: BoardViewProps) {
                 </div>
 
                 {/* Footer Actions de la colonne gauche */}
-                <div className="border-t border-border-color pt-4 mt-4 flex justify-between">
-                  <button 
-                    type="button"
-                    disabled={isArchiving}
-                    onClick={handleArchiveJob}
-                    className="bg-red-500/10 hover:bg-red-500 border border-red-500/20 text-red-400 hover:text-white py-2 px-4 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all duration-150 disabled:opacity-50"
-                  >
-                    {isArchiving ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
-                    Archiver l'offre
-                  </button>
+                <div className="border-t border-border-color pt-4 mt-4 flex justify-between gap-3">
+                  <div className="flex gap-2">
+                    <button 
+                      type="button"
+                      disabled={isArchiving}
+                      onClick={handleArchiveJob}
+                      className="bg-amber-500/10 hover:bg-amber-500 border border-amber-500/20 text-amber-400 hover:text-white py-2 px-3 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all duration-150 disabled:opacity-50"
+                    >
+                      {isArchiving ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                      Archiver
+                    </button>
+                    
+                    <button 
+                      type="button"
+                      disabled={isDeleting}
+                      onClick={handleDeleteJob}
+                      className="bg-red-500/10 hover:bg-red-500 border border-red-500/20 text-red-400 hover:text-white py-2 px-3 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all duration-150 disabled:opacity-50"
+                    >
+                      {isDeleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                      Supprimer
+                    </button>
+                  </div>
 
                   <button 
                     type="submit"
@@ -696,7 +1582,7 @@ export function BoardView({ initialColumns, userId }: BoardViewProps) {
                     className="bg-primary hover:bg-primary-hover text-white py-2 px-4 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all duration-150 disabled:opacity-50"
                   >
                     {isSavingJob ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
-                    Enregistrer les modifications
+                    Enregistrer
                   </button>
                 </div>
 
@@ -757,6 +1643,134 @@ export function BoardView({ initialColumns, userId }: BoardViewProps) {
                   </div>
                 </div>
 
+              </div>
+
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* ----------------------------------------------------
+          MODALE DE GESTION DES ETAPES (COLONNES)
+          ---------------------------------------------------- */}
+      {showColumnsModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-bg-side border border-border-color rounded-2xl w-full max-w-[550px] overflow-hidden flex flex-col shadow-2xl shadow-black/50 animate-fadeIn">
+            
+            {/* Header */}
+            <div className="flex justify-between items-center px-6 py-4 border-b border-border-color">
+              <h3 className="font-display font-bold text-lg flex items-center gap-2">
+                <Settings size={18} className="text-primary" />
+                Gérer les étapes du tableau
+              </h3>
+              <button 
+                onClick={() => setShowColumnsModal(false)}
+                className="text-text-muted hover:text-foreground p-1.5 rounded-lg hover:bg-foreground/5 cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Corps */}
+            <div className="p-6 flex flex-col gap-6">
+              
+              {/* Formulaire d'ajout de colonne */}
+              <form onSubmit={handleCreateColumn} className="flex gap-2 items-end">
+                <div className="flex-1">
+                  <label className="block text-[11px] font-semibold text-text-muted mb-1.5">Nouvelle étape</label>
+                  <input 
+                    type="text"
+                    required
+                    value={newColumnName}
+                    onChange={(e) => setNewColumnName(e.target.value)}
+                    placeholder="Ex: Entretien technique..."
+                    className="w-full bg-foreground/4 border border-border-color py-2 px-3 rounded-lg text-sm focus:outline-none focus:border-primary transition-colors"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="bg-primary hover:bg-primary-hover text-white py-2 px-4 rounded-lg text-sm font-semibold flex items-center gap-1.5 cursor-pointer transition-all duration-150 h-[38px]"
+                >
+                  <Plus size={16} />
+                  Créer
+                </button>
+              </form>
+
+              {/* Liste des colonnes */}
+              <div className="flex flex-col gap-3">
+                <h4 className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Étapes actuelles</h4>
+                
+                <div className="flex flex-col gap-2 max-h-[300px] overflow-y-auto pr-1">
+                  {columns.map((col, index) => (
+                    <div 
+                      key={col.id}
+                      className="bg-foreground/2 border border-border-color rounded-xl p-3 flex items-center justify-between gap-3 hover:border-foreground/10 transition-all duration-150"
+                    >
+                      <div className="flex-1 flex items-center gap-2.5">
+                        <span className={`w-2.5 h-2.5 rounded-full ${col.color || 'bg-col-to-apply'}`} />
+                        
+                        {editingColumnId === col.id ? (
+                          <input
+                            type="text"
+                            value={editingColumnName}
+                            onChange={(e) => setEditingColumnName(e.target.value)}
+                            onBlur={() => handleRenameColumn(col.id, editingColumnName)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                handleRenameColumn(col.id, editingColumnName)
+                              }
+                            }}
+                            className="bg-foreground/4 border border-primary/40 py-1 px-2 rounded text-xs focus:outline-none focus:ring-1 focus:ring-primary w-[160px]"
+                            autoFocus
+                          />
+                        ) : (
+                          <span 
+                            onClick={() => {
+                              setEditingColumnId(col.id)
+                              setEditingColumnName(col.name)
+                            }}
+                            className="text-xs font-semibold cursor-pointer hover:text-primary transition-colors"
+                            title="Double-cliquez pour renommer"
+                          >
+                            {col.name}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        {/* Déplacer */}
+                        {index > 0 && (
+                          <button
+                            onClick={() => handleMoveColumn(col.id, 'left')}
+                            className="p-1.5 rounded hover:bg-foreground/5 text-text-muted hover:text-foreground cursor-pointer"
+                            title="Déplacer à gauche"
+                          >
+                            <ChevronLeft size={14} />
+                          </button>
+                        )}
+                        {index < columns.length - 1 && (
+                          <button
+                            onClick={() => handleMoveColumn(col.id, 'right')}
+                            className="p-1.5 rounded hover:bg-foreground/5 text-text-muted hover:text-foreground cursor-pointer"
+                            title="Déplacer à droite"
+                          >
+                            <ChevronRight size={14} />
+                          </button>
+                        )}
+                        
+                        {/* Supprimer */}
+                        <button
+                          onClick={() => handleDeleteColumn(col.id)}
+                          className="p-1.5 rounded hover:bg-red-500/10 text-text-muted hover:text-red-400 cursor-pointer ml-1.5 transition-colors"
+                          title="Supprimer la colonne"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
 
             </div>

@@ -1,202 +1,209 @@
 'use client'
 
-import * as React from 'react'
-import { 
-  ArrowLeft, 
-  Globe, 
-  Calendar, 
-  FileText, 
-  Users, 
-  Mail, 
-  Phone 
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import {
+  Building2, Briefcase, Users, Search, Plus, Globe, ChevronRight
 } from 'lucide-react'
 import Link from 'next/link'
-import { JobApplication, Company, Column, Contact } from '@prisma/client'
 
-// Types locaux pour le rendu
-type JobWithColumn = JobApplication & {
-  column: Column
+interface CompanyJob {
+  id: string
+  title: string
+  column: { name: string; color: string } | null
+}
+
+interface Company {
+  id: string
+  name: string
+  website: string | null
+  logoUrl: string | null
+  _count: { jobApplications: number; contacts: number }
+  jobApplications: CompanyJob[]
 }
 
 interface CompanyViewProps {
-  company: Company & {
-    jobApplications: JobWithColumn[]
-    contacts: Contact[]
-  }
-  userId: string
+  initialCompanies: Company[]
 }
 
-export function CompanyView({ company, userId }: CompanyViewProps) {
-  const [notes, setNotes] = React.useState('')
-  
-  // Simulation de calculs analytiques réels sur les données de l'entreprise
-  const stats = React.useMemo(() => {
-    const totalOffers = company.jobApplications.length
-    
-    // Détermine le taux de conversion (Pourcentage d'offres débouchant sur "Entretien" ou "Offre")
-    const successOffers = company.jobApplications.filter(job => {
-      const colName = job.column.name.toLowerCase()
-      return colName.includes('entretien') || colName.includes('offre')
-    }).length
+export function CompanyView({ initialCompanies }: CompanyViewProps) {
+  const router = useRouter()
+  const [companies] = useState(initialCompanies)
+  const [search, setSearch] = useState('')
+  const [showModal, setShowModal] = useState(false)
+  const [formName, setFormName] = useState('')
+  const [formWebsite, setFormWebsite] = useState('')
+  const [isCreating, setIsCreating] = useState(false)
 
-    const conversionRate = totalOffers > 0 
-      ? Math.round((successOffers / totalOffers) * 100) 
-      : 0
+  const filtered = companies.filter(c =>
+    c.name.toLowerCase().includes(search.toLowerCase())
+  )
 
-    return [
-      { title: "Candidatures totales", value: totalOffers.toString(), color: "" },
-      { title: "Temps de réponse moyen", value: "Calcul en cours...", color: "text-purple-400" },
-      { title: "Taux de conversion", value: `${conversionRate}%`, color: "text-emerald-400" }
+  const handleCreate = async () => {
+    if (!formName.trim()) return
+    setIsCreating(true)
+    try {
+      const res = await fetch('/api/company', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: formName.trim(), website: formWebsite.trim() || null }),
+      })
+      if (res.ok) {
+        router.refresh()
+        setShowModal(false)
+        setFormName('')
+        setFormWebsite('')
+      }
+    } finally {
+      setIsCreating(false)
+    }
+  }
+
+  const getCompanyColor = (name: string) => {
+    const colors = [
+      'from-violet-500 to-purple-600',
+      'from-blue-500 to-cyan-600',
+      'from-emerald-500 to-teal-600',
+      'from-orange-500 to-amber-600',
+      'from-pink-500 to-rose-600',
     ]
-  }, [company])
+    return colors[name.charCodeAt(0) % colors.length]
+  }
 
   return (
-    <main className="flex-1 overflow-y-auto p-10">
-      
-      <Link 
-        href="/company" 
-        className="flex items-center gap-2 text-text-muted hover:text-foreground text-sm font-medium mb-6 w-fit transition-colors duration-200"
-      >
-        <ArrowLeft size={16} />
-        Retour à la liste
-      </Link>
-
-      {/* En-tête */}
-      <header className="flex items-center justify-between border-b border-border-color pb-8 mb-8">
-        <div className="flex items-center gap-6">
-          <div className="w-20 h-20 rounded-2xl bg-black border border-border-color flex items-center justify-center font-display font-extrabold text-3xl text-white shadow-xl shadow-black/30">
-            {company.name.charAt(0).toUpperCase()}
+    <main className="flex-1 overflow-auto p-8">
+      <div className="max-w-5xl mx-auto">
+        <div className="flex items-center justify-between mb-10">
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <Building2 size={18} className="text-primary" />
+              <span className="text-xs font-semibold text-primary uppercase tracking-wider">CRM</span>
+            </div>
+            <h1 className="font-display font-bold text-3xl tracking-tight">Entreprises</h1>
+            <p className="text-text-muted text-sm mt-1">
+              {companies.length} entreprise{companies.length > 1 ? 's' : ''} suivie{companies.length > 1 ? 's' : ''}
+            </p>
           </div>
-          <div className="flex flex-col">
-            <h1 className="font-display font-bold text-3xl mb-1.5 tracking-tight">{company.name}</h1>
-            {company.website ? (
-              <a 
-                href={company.website.startsWith('http') ? company.website : `https://${company.website}`} 
-                target="_blank" 
-                rel="noreferrer"
-                className="text-purple-400 hover:text-purple-300 text-sm font-medium flex items-center gap-1.5 w-fit"
-              >
-                {company.website}
-                <Globe size={14} />
-              </a>
-            ) : (
-              <span className="text-xs text-text-muted">Aucun site web</span>
-            )}
-          </div>
+          <button
+            onClick={() => setShowModal(true)}
+            className="flex items-center gap-2 bg-primary hover:bg-primary-hover text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-primary/25"
+          >
+            <Plus size={16} />
+            Ajouter
+          </button>
         </div>
-      </header>
 
-      {/* Grille */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
-        {/* Colonne de gauche (KPIs, Timeline, Notes) */}
-        <div className="lg:col-span-2 flex flex-col gap-8">
-          
-          {/* KPIs */}
-          <div className="grid grid-cols-3 gap-5">
-            {stats.map((item, index) => (
-              <div key={index} className="bg-card-bg border border-border-color rounded-2xl p-5 text-center">
-                <p className="text-xs text-text-muted mb-1.5">{item.title}</p>
-                <h3 className={`font-display text-2xl font-bold ${item.color}`}>{item.value}</h3>
-              </div>
+        <div className="relative mb-8">
+          <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted" />
+          <input
+            type="text"
+            placeholder="Rechercher une entreprise..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="w-full bg-card-bg border border-border-color rounded-xl pl-11 pr-4 py-3 text-sm text-foreground placeholder-text-muted/50 focus:outline-none focus:border-primary/40 focus:ring-1 focus:ring-primary/20 transition-all"
+          />
+        </div>
+
+        {filtered.length === 0 ? (
+          <div className="text-center py-20">
+            <Building2 size={48} className="mx-auto mb-4 text-text-muted/20" />
+            <p className="text-text-muted text-sm">
+              {search ? 'Aucune entreprise trouvée.' : "Les entreprises s'ajoutent automatiquement lors de la création de candidatures."}
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filtered.map(company => (
+              <Link
+                key={company.id}
+                href={`/company/${company.id}`}
+                className="group block bg-card-bg border border-border-color rounded-2xl p-5 hover:border-primary/25 hover:shadow-xl hover:shadow-primary/5 transition-all duration-300 hover:-translate-y-0.5"
+              >
+                <div className="flex items-start gap-3 mb-4">
+                  <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${getCompanyColor(company.name)} flex items-center justify-center text-white font-bold text-lg flex-shrink-0 shadow-sm`}>
+                    {company.name[0].toUpperCase()}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="font-semibold text-sm leading-tight truncate group-hover:text-primary transition-colors">
+                      {company.name}
+                    </h3>
+                    {company.website ? (
+                      <span className="text-xs text-text-muted flex items-center gap-1 mt-0.5 truncate">
+                        <Globe size={10} />
+                        {company.website.replace(/^https?:\/\//, '')}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-text-muted/40 mt-0.5 block">Pas de site web</span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="flex items-center gap-1.5 text-xs text-text-muted">
+                    <Briefcase size={12} />
+                    <span>{company._count.jobApplications} offre{company._count.jobApplications > 1 ? 's' : ''}</span>
+                  </div>
+                  <span className="text-border-color">·</span>
+                  <div className="flex items-center gap-1.5 text-xs text-text-muted">
+                    <Users size={12} />
+                    <span>{company._count.contacts} contact{company._count.contacts > 1 ? 's' : ''}</span>
+                  </div>
+                </div>
+
+                {company.jobApplications.length > 0 && (
+                  <div className="flex flex-col gap-1.5 mb-3">
+                    {company.jobApplications.slice(0, 2).map(job => (
+                      <div key={job.id} className="flex items-center gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: job.column?.color ?? '#6b7280' }} />
+                        <span className="text-xs text-text-muted truncate">{job.title}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex items-center gap-1 text-xs font-semibold text-primary/0 group-hover:text-primary transition-all duration-200">
+                  <span>Voir les détails</span>
+                  <ChevronRight size={12} />
+                </div>
+              </Link>
             ))}
           </div>
-
-          {/* Historique des offres */}
-          <div className="bg-card-bg border border-border-color rounded-[20px] p-6">
-            <h2 className="font-display font-bold text-lg mb-6 flex items-center gap-2.5">
-              <Calendar size={18} className="text-primary" />
-              Historique des offres chez {company.name}
-            </h2>
-
-            {company.jobApplications.length === 0 ? (
-              <p className="text-sm text-text-muted py-2">Aucune offre associée à cette entreprise pour le moment.</p>
-            ) : (
-              <div className="relative pl-6 before:content-[''] before:absolute before:left-1.5 before:top-2 before:bottom-2 before:w-[2px] before:bg-border-color">
-                {company.jobApplications.map((item, i) => (
-                  <div key={item.id} className="relative mb-6 last:mb-0">
-                    <span className="absolute -left-[23px] top-1.5 w-3.5 h-3.5 rounded-full border-[3px] border-background bg-text-muted" />
-                    
-                    <div className="bg-foreground/2 border border-border-color rounded-xl p-4 flex items-center justify-between gap-4">
-                      <div>
-                        <h4 className="text-sm font-semibold mb-1 leading-snug">{item.title}</h4>
-                        <p className="text-[11px] text-text-muted">
-                          Créé le {new Date(item.createdAt).toLocaleDateString('fr-FR')} • Source : {item.source || 'Manuel'}
-                        </p>
-                      </div>
-                      <span className="text-[10px] font-semibold py-1 px-2.5 rounded-full border bg-neutral-500/10 border-neutral-500/20 text-neutral-400">
-                        {item.column.name}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Bloc-notes */}
-          <div className="bg-card-bg border border-border-color rounded-[20px] p-6">
-            <h2 className="font-display font-bold text-lg mb-4 flex items-center gap-2.5">
-              <FileText size={18} className="text-primary" />
-              Notes sur l'entreprise
-            </h2>
-            <textarea 
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              className="w-full h-[150px] bg-foreground/3 border border-border-color rounded-xl p-4 text-sm leading-relaxed text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 resize-none mb-3"
-              placeholder="Rédigez vos notes ici (culture, technologies utilisées, questions à poser)..."
-            />
-            <button 
-              onClick={() => alert("Enregistrement des notes en cours...")}
-              className="bg-primary/10 border border-primary/20 hover:bg-primary/15 text-purple-400 py-2 px-4 rounded-lg text-xs font-semibold float-right cursor-pointer transition-colors duration-200"
-            >
-              Enregistrer les notes
-            </button>
-            <div className="clear-both" />
-          </div>
-
-        </div>
-
-        {/* Colonne de droite (Contacts) */}
-        <div>
-          <div className="bg-card-bg border border-border-color rounded-[20px] p-6">
-            <h2 className="font-display font-bold text-lg mb-6 flex items-center gap-2.5">
-              <Users size={18} className="text-primary" />
-              Contacts ({company.contacts.length})
-            </h2>
-
-            {company.contacts.length === 0 ? (
-              <p className="text-xs text-text-muted">Aucun contact enregistré pour cette entreprise.</p>
-            ) : (
-              <div className="flex flex-col gap-3">
-                {company.contacts.map((contact) => (
-                  <div key={contact.id} className="bg-foreground/2 border border-border-color rounded-xl p-4">
-                    <h4 className="text-sm font-semibold mb-0.5">{contact.name}</h4>
-                    {contact.role && <p className="text-xs text-primary font-medium mb-3">{contact.role}</p>}
-                    
-                    <div className="flex flex-col gap-2 text-xs text-text-muted">
-                      {contact.email && (
-                        <a href={`mailto:${contact.email}`} className="flex items-center gap-2 hover:text-foreground transition-colors duration-150">
-                          <Mail size={14} />
-                          {contact.email}
-                        </a>
-                      )}
-                      {contact.phone && (
-                        <a href={`tel:${contact.phone}`} className="flex items-center gap-2 hover:text-foreground transition-colors duration-150">
-                          <Phone size={14} />
-                          {contact.phone}
-                        </a>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
+        )}
       </div>
 
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setShowModal(false)}>
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+          <div className="relative bg-card-bg border border-border-color rounded-2xl p-6 w-full max-w-md shadow-2xl animate-slide-up" onClick={e => e.stopPropagation()}>
+            <h2 className="font-display font-bold text-xl mb-5">🏢 Ajouter une entreprise</h2>
+            <div className="mb-4">
+              <label className="text-xs font-semibold text-text-muted uppercase tracking-wider block mb-2">
+                Nom <span className="text-red-400">*</span>
+              </label>
+              <input type="text" value={formName} onChange={e => setFormName(e.target.value)}
+                placeholder="Ex: Google, Vercel..." autoFocus
+                onKeyDown={e => e.key === 'Enter' && handleCreate()}
+                className="w-full bg-background border border-border-color rounded-xl px-4 py-3 text-sm text-foreground placeholder-text-muted/50 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all" />
+            </div>
+            <div className="mb-6">
+              <label className="text-xs font-semibold text-text-muted uppercase tracking-wider block mb-2">
+                Site web <span className="text-text-muted/50">(optionnel)</span>
+              </label>
+              <input type="url" value={formWebsite} onChange={e => setFormWebsite(e.target.value)}
+                placeholder="https://example.com"
+                className="w-full bg-background border border-border-color rounded-xl px-4 py-3 text-sm text-foreground placeholder-text-muted/50 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all" />
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setShowModal(false)}
+                className="flex-1 py-2.5 px-4 rounded-xl border border-border-color text-sm font-medium text-text-muted hover:bg-foreground/5 transition-all">Annuler</button>
+              <button onClick={handleCreate} disabled={!formName.trim() || isCreating}
+                className="flex-1 py-2.5 px-4 rounded-xl bg-primary hover:bg-primary-hover text-white text-sm font-semibold transition-all disabled:opacity-50 hover:shadow-lg hover:shadow-primary/25">
+                {isCreating ? 'Création...' : 'Créer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   )
 }

@@ -35,11 +35,19 @@ const scrapeIndeed = () => {
 }
 
 const scrapeHelloWork = () => {
-  const title = document.querySelector('h1')?.innerText || 
-                document.querySelector('.job-header-title')?.innerText || 
-                'Poste inconnu';
+  let title = 'Poste inconnu';
+  const h1 = document.querySelector('h1');
+  if (h1) {
+    const clone = h1.cloneNode(true);
+    const children = clone.querySelectorAll('a, span, div, p');
+    children.forEach(el => el.remove());
+    title = clone.innerText || clone.textContent || 'Poste inconnu';
+  } else {
+    title = document.querySelector('.job-header-title')?.innerText || 'Poste inconnu';
+  }
   
-  const company = document.querySelector('[data-company-name]')?.getAttribute('data-company-name') ||
+  const company = document.querySelector('a[href*="/entreprises/"]')?.innerText ||
+                  document.querySelector('[data-company-name]')?.getAttribute('data-company-name') ||
                   document.querySelector('.job-header-company')?.innerText ||
                   document.querySelector('.company')?.innerText ||
                   'Entreprise inconnue';

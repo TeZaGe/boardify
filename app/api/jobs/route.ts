@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { db } from '@/lib/db'
 import { JobService } from '@/services/jobs'
+import { auth } from '@/auth'
 
 // Définition du schéma de validation de la candidature
 const addJobSchema = z.object({
@@ -11,33 +12,44 @@ const addJobSchema = z.object({
   description: z.string().optional().nullable(),
   url: z.string().max(1000).optional().nullable(),
   salary: z.string().max(100).optional().nullable(),
-  source: z.string().max(100).optional().nullable()
+  source: z.string().max(100).optional().nullable(),
+  appliedAt: z.string().optional().nullable()
 })
 
 export async function POST(request: NextRequest) {
   try {
-    // 1. Authentification (Extension Token, Session, ou Demo fallback)
+    // 1. Authentification — Extension Token OU Session Google
     let userId: string | null = null
 
-    // Lecture du token d'extension dans l'en-tête Authorization
+    // Priorité 1 : Token d'extension (pour l'extension de navigateur)
     const authHeader = request.headers.get('Authorization')
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.substring(7)
       const userByToken = await db.user.findUnique({
-        where: { extensionToken: token }
+        where: { extensionToken: token },
+        select: { id: true }
       })
       if (userByToken) {
         userId = userByToken.id
       }
     }
 
-    // Fallback de développement : Si non authentifié, on utilise le compte de démo
+    // Priorité 2 : Session NextAuth
     if (!userId) {
-      const demoUser = await JobService.getOrCreateDemoUser()
-      userId = demoUser.id
+      const session = await auth()
+      if (session?.user?.id) {
+        userId = session.user.id
+      }
     }
 
-    // 2. Récupération et validation du corps de requête
+    if (!userId) {
+      return NextResponse.json(
+        { error: { code: 'UNAUTHORIZED', message: 'Authentification requise.' } },
+        { status: 401 }
+      )
+    }
+
+    // 2. Validation du corps de requête
     const body = await request.json()
     const validation = addJobSchema.safeParse(body)
 
@@ -50,7 +62,7 @@ export async function POST(request: NextRequest) {
 
     const jobData = validation.data
 
-    // 3. Trouver la première colonne Kanban de l'utilisateur (ex: "À postuler")
+    // 3. Trouver la première colonne Kanban (tableau par défaut)
     let firstColumn = await db.column.findFirst({
       where: { userId },
       orderBy: { order: 'asc' }
@@ -59,27 +71,36 @@ export async function POST(request: NextRequest) {
     // Si l'utilisateur n'a pas de colonnes, on initialise son tableau de bord
     if (!firstColumn) {
       const columns = await JobService.getBoardData(userId)
-      firstColumn = columns[0]
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      firstColumn = (columns[0] as any) ?? null
     }
 
-    // Calculer le prochain ordre dans cette colonne
+    if (!firstColumn) {
+      return NextResponse.json(
+        { error: { code: 'NO_COLUMNS', message: 'Aucun tableau trouvé pour cet utilisateur.' } },
+        { status: 400 }
+      )
+    }
+
+    // 4. Calculer le prochain ordre dans cette colonne
     const maxOrderJob = await db.jobApplication.findFirst({
       where: { userId, columnId: firstColumn.id },
       orderBy: { order: 'desc' }
     })
     const nextOrder = maxOrderJob ? maxOrderJob.order + 1 : 1
 
-    // 4. Utilisation du service pour créer l'offre
+    // 5. Création de l'offre
     const job = await JobService.create(userId, {
       title: jobData.title,
       companyName: jobData.companyName,
-      location: jobData.location || undefined,
-      description: jobData.description || undefined,
-      url: jobData.url || undefined,
-      salary: jobData.salary || undefined,
-      source: jobData.source || 'Scraper Extension',
+      location: jobData.location ?? undefined,
+      description: jobData.description ?? undefined,
+      url: jobData.url ?? undefined,
+      salary: jobData.salary ?? undefined,
+      source: jobData.source ?? 'Scraper Extension',
       columnId: firstColumn.id,
-      order: nextOrder
+      order: nextOrder,
+      appliedAt: jobData.appliedAt ? new Date(jobData.appliedAt) : undefined
     })
 
     return NextResponse.json({ success: true, job }, { status: 201 })

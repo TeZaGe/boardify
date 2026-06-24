@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { db } from '@/lib/db'
 import { JobService } from '@/services/jobs'
+import { auth } from '@/auth'
 
 // Schéma de validation des modifications de la candidature
 const updateJobSchema = z.object({
@@ -13,7 +14,9 @@ const updateJobSchema = z.object({
   contactEmail: z.string().max(100).optional().nullable(),
   contactPhone: z.string().max(100).optional().nullable(),
   columnId: z.string().optional(),
-  archive: z.boolean().optional() // Si true, active le soft delete
+  archive: z.boolean().optional(), // Si true, active le soft delete
+  appliedAt: z.string().optional().nullable(),
+  tags: z.array(z.string()).optional()
 })
 
 export async function PATCH(
@@ -24,9 +27,10 @@ export async function PATCH(
     const resolvedParams = await params
     const id = resolvedParams.id
 
-    // 1. Récupération de l'utilisateur (démo fallback)
-    const user = await JobService.getOrCreateDemoUser()
-    const userId = user.id
+    // 1. Authentification via session OAuth
+    const session = await auth()
+    if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const userId = session.user.id
 
     // Vérifie que l'offre appartient bien à l'utilisateur
     const existingJob = await db.jobApplication.findFirst({
@@ -59,6 +63,38 @@ export async function PATCH(
     if (data.location !== undefined) updateData.location = data.location
     if (data.salary !== undefined) updateData.salary = data.salary
     if (data.url !== undefined) updateData.url = data.url
+    if (data.appliedAt !== undefined) updateData.appliedAt = data.appliedAt ? new Date(data.appliedAt) : null
+
+    // Mise à jour des tags
+    if (data.tags !== undefined) {
+      const tagIds: string[] = []
+      for (const tagName of data.tags) {
+        const cleanName = tagName.trim()
+        if (!cleanName) continue
+        
+        let tag = await db.tag.findUnique({
+          where: {
+            userId_name: {
+              userId,
+              name: cleanName
+            }
+          }
+        })
+        if (!tag) {
+          tag = await db.tag.create({
+            data: {
+              name: cleanName,
+              userId
+            }
+          })
+        }
+        tagIds.push(tag.id)
+      }
+      
+      updateData.tags = {
+        set: tagIds.map(id => ({ id }))
+      }
+    }
     
     // Mise à jour de la relation Contact
     if (data.contactName !== undefined || data.contactEmail !== undefined || data.contactPhone !== undefined) {
@@ -110,7 +146,14 @@ export async function PATCH(
     const updatedJob = await db.jobApplication.update({
       where: { id },
       data: updateData,
-      include: { company: true, column: true }
+      include: {
+        company: true,
+        column: true,
+        tags: true,
+        notes: { orderBy: { createdAt: 'desc' } },
+        events: { orderBy: { date: 'asc' } },
+        documents: true
+      }
     })
 
     return NextResponse.json({ success: true, job: updatedJob })
@@ -118,6 +161,46 @@ export async function PATCH(
     console.error('API Update Job Error:', e)
     return NextResponse.json(
       { error: { code: 'INTERNAL_SERVER_ERROR', message: 'Erreur lors de la mise à jour de la candidature.' } },
+      { status: 500 }
+    )
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const resolvedParams = await params
+    const id = resolvedParams.id
+
+    // Authentification via session OAuth
+    const session = await auth()
+    if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const userId = session.user.id
+
+    // Vérifie la propriété
+    const existingJob = await db.jobApplication.findFirst({
+      where: { id, userId }
+    })
+
+    if (!existingJob) {
+      return NextResponse.json(
+        { error: { code: 'NOT_FOUND', message: 'Candidature introuvable.' } },
+        { status: 404 }
+      )
+    }
+
+    // Suppression définitive
+    await db.jobApplication.delete({
+      where: { id }
+    })
+
+    return NextResponse.json({ success: true, message: 'Candidature supprimée définitivement.' })
+  } catch (e) {
+    console.error('API Delete Job Error:', e)
+    return NextResponse.json(
+      { error: { code: 'INTERNAL_SERVER_ERROR', message: 'Erreur lors de la suppression de la candidature.' } },
       { status: 500 }
     )
   }

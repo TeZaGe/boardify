@@ -1,4 +1,4 @@
-import { JobApplication, Company, Column, Contact, Note, Event } from '@prisma/client'
+import { JobApplication, Company, Column, Contact, Note, Event, Document } from '@prisma/client'
 
 // Types de données étendus pour les requêtes complexes
 export type JobApplicationWithCompany = JobApplication & {
@@ -12,6 +12,7 @@ export type KanbanColumn = Column & {
     notes: Note[]
     events: Event[]
     contacts: Contact[]
+    documents: Document[]
   })[]
 }
 

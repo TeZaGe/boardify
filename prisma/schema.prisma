@@ -21,6 +21,7 @@ model User {
   extensionToken  String?          @unique // Jeton pour l'extension Chrome/Firefox
   accounts        Account[]
   sessions        Session[]
+  boards          Board[]
   columns         Column[]
   companies       Company[]        // Les entreprises suivies par l'utilisateur
   contacts        Contact[]
@@ -73,6 +74,25 @@ model VerificationToken {
 // JOB CRM MODELS
 // ==========================================
 
+model Board {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  emoji       String?  @default("📋")
+  isDefault   Boolean  @default(false)
+  order       Int      @default(0)
+
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  columns     Column[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@unique([userId, name])
+}
+
 model Column {
   id              String           @id @default(cuid())
   name            String
@@ -80,6 +100,8 @@ model Column {
   color           String?
   userId          String
   user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  boardId         String?
+  board           Board?           @relation(fields: [boardId], references: [id], onDelete: Cascade)
   jobApplications JobApplication[]
   historyFrom     JobApplicationHistory[] @relation("ColFrom")
   historyTo       JobApplicationHistory[] @relation("ColTo")
@@ -87,8 +109,9 @@ model Column {
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 
-  @@unique([userId, name])
-  @@unique([userId, order])
+  @@index([boardId])
+  @@unique([userId, boardId, name])
+  @@unique([userId, boardId, order])
 }
 
 model Company {
@@ -139,6 +162,7 @@ model JobApplication {
   history         JobApplicationHistory[]
 
   deletedAt       DateTime? // Soft delete
+  appliedAt       DateTime? // Date d'envoi de la candidature
   
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt

@@ -41,50 +41,133 @@ export class ScraperService {
       const ogDescription = $('meta[property="og:description"]').attr('content') || $('meta[name="twitter:description"]').attr('content')
       const ogUrl = $('meta[property="og:url"]').attr('content') || url
 
-      let title = ''
-      let companyName = ''
-      let location = ''
-      let salary = ''
-      let description = ''
+      // 2. Extraction structurée via JSON-LD (JobPosting) si disponible
+      let ldTitle = ''
+      let ldCompanyName = ''
+      let ldLocation = ''
+      let ldSalary = ''
+      let ldDescription = ''
 
-      // 2. Extraction ciblée selon le site hôte
+      $('script[type="application/ld+json"]').each((_, el) => {
+        try {
+          const content = $(el).text().trim()
+          const data = JSON.parse(content)
+          
+          const processJobPosting = (item: any) => {
+            if (item?.['@type'] === 'JobPosting') {
+              if (item.title) ldTitle = item.title
+              if (item.hiringOrganization?.name) ldCompanyName = item.hiringOrganization.name
+              
+              if (item.jobLocation) {
+                const loc = item.jobLocation
+                if (loc.address) {
+                  const addr = loc.address
+                  ldLocation = addr.addressLocality || addr.addressRegion || addr.addressCountry || ''
+                } else if (typeof loc === 'string') {
+                  ldLocation = loc
+                } else if (loc.name) {
+                  ldLocation = loc.name
+                }
+              }
+              
+              if (item.description) {
+                const descText = cheerio.load(item.description).text().trim()
+                ldDescription = descText || item.description
+              }
+              
+              if (item.baseSalary) {
+                const sal = item.baseSalary
+                if (sal.value) {
+                  if (typeof sal.value === 'object') {
+                    const val = sal.value
+                    const min = val.minValue || val.value
+                    const max = val.maxValue
+                    const currency = sal.currency || 'EUR'
+                    if (min && max) {
+                      ldSalary = `${min} - ${max} ${currency}`
+                    } else if (min) {
+                      ldSalary = `${min} ${currency}`
+                    }
+                  } else {
+                    ldSalary = String(sal.value)
+                  }
+                }
+              }
+            }
+          }
+
+          if (Array.isArray(data)) {
+            data.forEach(processJobPosting)
+          } else {
+            processJobPosting(data)
+          }
+        } catch (e) {
+          // Ignorer les erreurs d'analyse JSON
+        }
+      })
+
+      let title = ldTitle
+      let companyName = ldCompanyName
+      let location = ldLocation
+      let salary = ldSalary
+      let description = ldDescription
+
+      // 3. Extraction ciblée selon le site hôte si les valeurs JSON-LD manquent
       if (siteType === 'indeed') {
-        title = $('.jobsearch-JobInfoHeader-title').text().trim() || $('h1').text().trim()
-        companyName = $('.jobsearch-InlineCompanyRating-companyName').text().trim() || 
-                      $('[data-company-name="true"]').text().trim()
-        location = $('.jobsearch-InlineCompanyRating-companyLocation').text().trim() || 
-                   $('.jobsearch-JobInfoHeader-subtitle div').first().text().trim()
-        salary = $('#salaryInfoAndJobType').text().trim() || $('.salary-snippet-container').text().trim()
-        description = $('#jobDescriptionText').text().trim()
+        if (!title) title = $('.jobsearch-JobInfoHeader-title').text().trim() || $('h1').text().trim()
+        if (!companyName) {
+          companyName = $('.jobsearch-InlineCompanyRating-companyName').text().trim() || 
+                        $('[data-company-name="true"]').text().trim()
+        }
+        if (!location) {
+          location = $('.jobsearch-InlineCompanyRating-companyLocation').text().trim() || 
+                     $('.jobsearch-JobInfoHeader-subtitle div').first().text().trim()
+        }
+        if (!salary) salary = $('#salaryInfoAndJobType').text().trim() || $('.salary-snippet-container').text().trim()
+        if (!description) description = $('#jobDescriptionText').text().trim()
       } 
       else if (siteType === 'hellowork') {
-        title = $('h1').text().trim() || $('.job-header-title').text().trim()
-        companyName = $('[data-company-name]').attr('data-company-name') || 
-                      $('.job-header-company').text().trim() || 
-                      $('.company').text().trim()
-        location = $('.job-header-location').text().trim() || $('.location').text().trim()
-        salary = $('.job-header-salary').text().trim() || $('.salary').text().trim()
-        description = $('.job-description').text().trim() || $('#job-description').text().trim()
+        if (!title) {
+          const titleEl = $('h1').clone()
+          titleEl.find('a, span, div, p').remove()
+          title = titleEl.text().trim() || $('.job-header-title').text().trim()
+        }
+        if (!companyName) {
+          companyName = $('a[href*="/entreprises/"]').filter((_, el) => $(el).text().trim().length > 0).first().text().trim() ||
+                        $('[data-company-name]').attr('data-company-name') || 
+                        $('.job-header-company').text().trim() || 
+                        $('.company').text().trim()
+        }
+        if (!location) location = $('.job-header-location').text().trim() || $('.location').text().trim()
+        if (!salary) salary = $('.job-header-salary').text().trim() || $('.salary').text().trim()
+        if (!description) description = $('.job-description').text().trim() || $('#job-description').text().trim()
       } 
       else if (siteType === 'linkedin') {
-        title = $('h1.topcard__title').text().trim() || 
-                $('h1').text().trim() || 
-                $('.top-card-layout__title').text().trim()
-        companyName = $('.topcard__flavor a').first().text().trim() || 
-                      $('.topcard__flavor').first().text().trim() || 
-                      $('.top-card-layout__first-subline a').first().text().trim()
-        location = $('.topcard__flavor--bullet').first().text().trim() || 
-                   $('.top-card-layout__first-subline').first().text().trim()
-        description = $('.description__text').text().trim() || 
-                      $('.show-more-less-html__markup').text().trim()
+        if (!title) {
+          title = $('h1.topcard__title').text().trim() || 
+                  $('h1').text().trim() || 
+                  $('.top-card-layout__title').text().trim()
+        }
+        if (!companyName) {
+          companyName = $('.topcard__flavor a').first().text().trim() || 
+                        $('.topcard__flavor').first().text().trim() || 
+                        $('.top-card-layout__first-subline a').first().text().trim()
+        }
+        if (!location) {
+          location = $('.topcard__flavor--bullet').first().text().trim() || 
+                     $('.top-card-layout__first-subline').first().text().trim()
+        }
+        if (!description) {
+          description = $('.description__text').text().trim() || 
+                        $('.show-more-less-html__markup').text().trim()
+        }
       }
 
-      // 3. Fallback intelligent si le scraping direct a été bloqué ou a échoué
+      // 4. Fallback intelligent si le scraping direct a été bloqué ou a échoué
       if (!title && ogTitle) {
-        // L'ogTitle est souvent structuré : "Titre de l'emploi - Entreprise"
         const parts = ogTitle.split(/ chez | at | - /i)
         title = parts[0]?.trim() || ogTitle
-        if (parts.length > 1) {
+        if (parts.length > 1 && !companyName) {
           companyName = parts[1]?.trim() || companyName
         }
       }

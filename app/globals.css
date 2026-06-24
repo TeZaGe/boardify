@@ -1,70 +1,86 @@
 @import "tailwindcss";
 
-/* Configuration des variables de thèmes */
+/* ============================================================
+   DESIGN TOKENS — Job CRM
+============================================================ */
 :root {
-  --background: #ffffff;
-  --foreground: #090c15;
-  --card-bg: rgba(243, 244, 246, 0.7);
-  --border-color: rgba(0, 0, 0, 0.08);
-  --primary: #7c3aed;
-  --primary-hover: #6d28d9;
-  --text-main: #1f2937;
-  --text-muted: #6b7280;
-  --glow: rgba(124, 58, 237, 0.05);
-  --bg-side: #f3f4f6;
-  --col-dot-bg: #e5e7eb;
-
-  --col-to-apply: #6b7280;
-  --col-applied: #3b82f6;
-  --col-interview: #d97706;
-  --col-offer: #059669;
-  --col-refused: #dc2626;
-}
-
-/* Thème sombre par défaut */
-html,
-html.dark {
-  --background: #080b11;
-  --foreground: #f3f4f6;
-  --card-bg: rgba(22, 30, 49, 0.7);
-  --border-color: rgba(255, 255, 255, 0.08);
-  --primary: #8b5cf6;
-  --primary-hover: #7c3aed;
-  --text-main: #f3f4f6;
-  --text-muted: #9ca3af;
-  --glow: rgba(139, 92, 246, 0.15);
-  --bg-side: #0e1322;
-  --col-dot-bg: rgba(255, 255, 255, 0.05);
-
-  --col-to-apply: #6b7280;
-  --col-applied: #3b82f6;
-  --col-interview: #f59e0b;
-  --col-offer: #10b981;
-  --col-refused: #ef4444;
-}
-
-/* Thème clair explicite */
-html.light {
   --background: #f8fafc;
   --foreground: #0f172a;
-  --card-bg: rgba(255, 255, 255, 0.8);
+  --card-bg: rgba(255, 255, 255, 0.85);
   --border-color: rgba(15, 23, 42, 0.08);
   --primary: #7c3aed;
   --primary-hover: #6d28d9;
-  --text-main: #334155;
+  --primary-subtle: rgba(124, 58, 237, 0.06);
+  --text-main: #1e293b;
   --text-muted: #64748b;
-  --glow: rgba(124, 58, 237, 0.05);
   --bg-side: #ffffff;
-  --col-dot-bg: #f1f5f9;
-
+  --sidebar-width: 260px;
+  --glow: rgba(124, 58, 237, 0.08);
+  --glow-emerald: rgba(16, 185, 129, 0.06);
+  --col-dot-bg: #e2e8f0;
   --col-to-apply: #64748b;
   --col-applied: #2563eb;
   --col-interview: #d97706;
   --col-offer: #16a34a;
   --col-refused: #dc2626;
+  --radius: 14px;
+  --radius-sm: 10px;
+  --radius-lg: 20px;
+  --shadow-card: 0 1px 3px rgba(15, 23, 42, 0.06), 0 4px 12px rgba(15, 23, 42, 0.04);
+  --shadow-card-hover: 0 4px 16px rgba(124, 58, 237, 0.12), 0 1px 4px rgba(15, 23, 42, 0.08);
+  --shadow-modal: 0 20px 60px rgba(15, 23, 42, 0.16);
+  --transition-base: 200ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Extension du thème dans Tailwind CSS v4 */
+html,
+html.dark {
+  --background: #080c14;
+  --foreground: #f1f5f9;
+  --card-bg: rgba(15, 23, 42, 0.75);
+  --border-color: rgba(248, 250, 252, 0.07);
+  --primary: #8b5cf6;
+  --primary-hover: #7c3aed;
+  --primary-subtle: rgba(139, 92, 246, 0.1);
+  --text-main: #e2e8f0;
+  --text-muted: #94a3b8;
+  --bg-side: #0b0f1a;
+  --glow: rgba(139, 92, 246, 0.18);
+  --glow-emerald: rgba(16, 185, 129, 0.1);
+  --col-dot-bg: rgba(248, 250, 252, 0.06);
+  --col-to-apply: #94a3b8;
+  --col-applied: #3b82f6;
+  --col-interview: #f59e0b;
+  --col-offer: #10b981;
+  --col-refused: #ef4444;
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.2);
+  --shadow-card-hover: 0 4px 20px rgba(139, 92, 246, 0.2), 0 1px 4px rgba(0,0,0,0.3);
+  --shadow-modal: 0 20px 60px rgba(0,0,0,0.5);
+}
+
+html.light {
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  --card-bg: rgba(255, 255, 255, 0.85);
+  --border-color: rgba(15, 23, 42, 0.08);
+  --primary: #7c3aed;
+  --primary-hover: #6d28d9;
+  --primary-subtle: rgba(124, 58, 237, 0.06);
+  --text-main: #1e293b;
+  --text-muted: #64748b;
+  --bg-side: #ffffff;
+  --glow: rgba(124, 58, 237, 0.08);
+  --glow-emerald: rgba(16, 185, 129, 0.06);
+  --col-dot-bg: #e2e8f0;
+  --col-to-apply: #64748b;
+  --col-applied: #2563eb;
+  --col-interview: #d97706;
+  --col-offer: #16a34a;
+  --col-refused: #dc2626;
+  --shadow-card: 0 1px 3px rgba(15, 23, 42, 0.06), 0 4px 12px rgba(15, 23, 42, 0.04);
+  --shadow-card-hover: 0 4px 16px rgba(124, 58, 237, 0.12), 0 1px 4px rgba(15, 23, 42, 0.08);
+  --shadow-modal: 0 20px 60px rgba(15, 23, 42, 0.16);
+}
+
 @theme {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -72,23 +88,77 @@ html.light {
   --color-border-color: var(--border-color);
   --color-primary: var(--primary);
   --color-primary-hover: var(--primary-hover);
+  --color-primary-subtle: var(--primary-subtle);
   --color-text-main: var(--text-main);
   --color-text-muted: var(--text-muted);
   --color-bg-side: var(--bg-side);
   --color-col-dot-bg: var(--col-dot-bg);
-
   --color-col-to-apply: var(--col-to-apply);
   --color-col-applied: var(--col-applied);
   --color-col-interview: var(--col-interview);
   --color-col-offer: var(--col-offer);
   --color-col-refused: var(--col-refused);
-
   --font-sans: 'Inter', sans-serif;
   --font-display: 'Outfit', sans-serif;
+  --radius-sm: 10px;
+  --radius: 14px;
+  --radius-lg: 20px;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 body {
   background-color: var(--background);
   color: var(--foreground);
   transition: background-color 0.3s ease, color 0.3s ease;
+  font-family: 'Inter', sans-serif;
+}
+
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(16px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.animate-slide-up {
+  animation: slide-up 0.22s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.animate-fade-in {
+  animation: fade-in 0.2s ease forwards;
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, var(--card-bg) 25%, var(--col-dot-bg) 50%, var(--card-bg) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 8px;
+}
+
+.kanban-drop-active {
+  background: var(--primary-subtle) !important;
+  border-color: rgba(139, 92, 246, 0.4) !important;
+  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2) !important;
 }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { db } from '@/lib/db'
-import { JobService } from '@/services/jobs'
+import { auth } from '@/auth'
 
 const addNoteSchema = z.object({
   content: z.string().min(1)
@@ -15,9 +15,10 @@ export async function POST(
     const resolvedParams = await params
     const id = resolvedParams.id
 
-    // 1. Authentification (démo fallback)
-    const user = await JobService.getOrCreateDemoUser()
-    const userId = user.id
+    // 1. Authentification via session OAuth
+    const session = await auth()
+    if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const userId = session.user.id
 
     // Vérifie que l'offre appartient à l'utilisateur
     const existingJob = await db.jobApplication.findFirst({
