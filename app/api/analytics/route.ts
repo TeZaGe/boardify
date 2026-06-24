@@ -33,7 +33,7 @@ export async function GET() {
 
     // 1. Calculate status distribution
     const statusCounts: Record<string, { count: number; color: string }> = {}
-    columns.forEach(col => {
+    columns.forEach((col: any) => {
       if (!statusCounts[col.name]) {
         statusCounts[col.name] = { count: 0, color: col.color || '#6b7280' }
       }
@@ -45,7 +45,7 @@ export async function GET() {
     let offerCount = 0
     let refusalCount = 0
 
-    jobs.forEach(job => {
+    jobs.forEach((job: any) => {
       const colName = job.column.name
       if (statusCounts[colName]) {
         statusCounts[colName].count++
@@ -102,7 +102,7 @@ export async function GET() {
 
     // 3. Geographic zones (locations)
     const locationCounts: Record<string, number> = {}
-    jobs.forEach(job => {
+    jobs.forEach((job: any) => {
       let loc = job.location?.trim() || ''
       if (!loc) return
       // Normalize casing (e.g., Paris, Remote, Lyon)
@@ -118,11 +118,11 @@ export async function GET() {
     // 4. CV A/B Testing Stats
     const cvStats: Record<string, { total: number; interviews: number; refusals: number; offers: number }> = {}
 
-    jobs.forEach(job => {
+    jobs.forEach((job: any) => {
       let cvName = job.appliedCv?.name
       if (!cvName) {
         // Fallback: look for a CV document in the job application itself
-        const cvDoc = job.documents.find(d => d.type === 'CV')
+        const cvDoc = job.documents.find((d: any) => d.type === 'CV')
         if (cvDoc) {
           cvName = cvDoc.name
         }
@@ -178,7 +178,7 @@ export async function GET() {
       }
     }
 
-    jobs.forEach(job => {
+    jobs.forEach((job: any) => {
       const date = job.appliedAt || job.createdAt
       if (!date) return
       const d = new Date(date)
@@ -200,7 +200,7 @@ export async function GET() {
 
     const byMonth = Object.values(activityCounts)
       .sort((a, b) => a.index - b.index)
-      .map(item => ({
+      .map((item: any) => ({
         month: item.key,
         applications: item.applications,
         interviews: item.interviews
