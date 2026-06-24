@@ -1,9 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  Building2, Briefcase, Users, Search, Plus, Globe, ChevronRight
+  Building2, Briefcase, Users, Search, Plus, Globe, ChevronRight, Trash2
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -28,12 +28,38 @@ interface CompanyViewProps {
 
 export function CompanyView({ initialCompanies }: CompanyViewProps) {
   const router = useRouter()
-  const [companies] = useState(initialCompanies)
+  const [companies, setCompanies] = useState(initialCompanies)
   const [search, setSearch] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [formName, setFormName] = useState('')
   const [formWebsite, setFormWebsite] = useState('')
   const [isCreating, setIsCreating] = useState(false)
+
+  useEffect(() => {
+    setCompanies(initialCompanies)
+  }, [initialCompanies])
+
+  const handleDeleteCompany = async (id: string, name: string) => {
+    if (!confirm(`Voulez-vous vraiment supprimer l'entreprise "${name}" ? Attention, cela supprimera également toutes les candidatures et contacts rattachés.`)) {
+      return
+    }
+
+    try {
+      const res = await fetch(`/api/company/${id}`, {
+        method: 'DELETE'
+      })
+
+      if (res.ok) {
+        setCompanies(prev => prev.filter(c => c.id !== id))
+        router.refresh()
+      } else {
+        alert("Erreur lors de la suppression de l'entreprise.")
+      }
+    } catch (err) {
+      console.error(err)
+      alert("Erreur lors de la suppression.")
+    }
+  }
 
   const filtered = companies.filter(c =>
     c.name.toLowerCase().includes(search.toLowerCase())
@@ -119,23 +145,37 @@ export function CompanyView({ initialCompanies }: CompanyViewProps) {
                 href={`/company/${company.id}`}
                 className="group block bg-card-bg border border-border-color rounded-2xl p-5 hover:border-primary/25 hover:shadow-xl hover:shadow-primary/5 transition-all duration-300 hover:-translate-y-0.5"
               >
-                <div className="flex items-start gap-3 mb-4">
-                  <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${getCompanyColor(company.name)} flex items-center justify-center text-white font-bold text-lg flex-shrink-0 shadow-sm`}>
-                    {company.name[0].toUpperCase()}
+                <div className="flex items-start justify-between gap-3 mb-4">
+                  <div className="flex items-start gap-3 min-w-0 flex-1">
+                    <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${getCompanyColor(company.name)} flex items-center justify-center text-white font-bold text-lg flex-shrink-0 shadow-sm`}>
+                      {company.name[0].toUpperCase()}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="font-semibold text-sm leading-tight truncate group-hover:text-primary transition-colors">
+                        {company.name}
+                      </h3>
+                      {company.website ? (
+                        <span className="text-xs text-text-muted flex items-center gap-1 mt-0.5 truncate">
+                          <Globe size={10} />
+                          {company.website.replace(/^https?:\/\//, '')}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-text-muted/40 mt-0.5 block">Pas de site web</span>
+                      )}
+                    </div>
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <h3 className="font-semibold text-sm leading-tight truncate group-hover:text-primary transition-colors">
-                      {company.name}
-                    </h3>
-                    {company.website ? (
-                      <span className="text-xs text-text-muted flex items-center gap-1 mt-0.5 truncate">
-                        <Globe size={10} />
-                        {company.website.replace(/^https?:\/\//, '')}
-                      </span>
-                    ) : (
-                      <span className="text-xs text-text-muted/40 mt-0.5 block">Pas de site web</span>
-                    )}
-                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      handleDeleteCompany(company.id, company.name)
+                    }}
+                    className="text-text-muted hover:text-red-400 p-1.5 rounded-lg hover:bg-foreground/5 transition-colors cursor-pointer flex-shrink-0"
+                    title="Supprimer l'entreprise"
+                  >
+                    <Trash2 size={14} />
+                  </button>
                 </div>
 
                 <div className="flex items-center gap-3 mb-3">

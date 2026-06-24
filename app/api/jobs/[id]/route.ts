@@ -16,7 +16,8 @@ const updateJobSchema = z.object({
   columnId: z.string().optional(),
   archive: z.boolean().optional(), // Si true, active le soft delete
   appliedAt: z.string().optional().nullable(),
-  tags: z.array(z.string()).optional()
+  tags: z.array(z.string()).optional(),
+  appliedCvId: z.string().optional().nullable()
 })
 
 export async function PATCH(
@@ -64,6 +65,7 @@ export async function PATCH(
     if (data.salary !== undefined) updateData.salary = data.salary
     if (data.url !== undefined) updateData.url = data.url
     if (data.appliedAt !== undefined) updateData.appliedAt = data.appliedAt ? new Date(data.appliedAt) : null
+    if (data.appliedCvId !== undefined) updateData.appliedCvId = data.appliedCvId
 
     // Mise à jour des tags
     if (data.tags !== undefined) {

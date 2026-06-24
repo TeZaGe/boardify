@@ -31,7 +31,31 @@ export async function POST(
 
     const formData = await request.formData()
     const file = formData.get('file') as File | null
+    const associateName = formData.get('associateName') as string | null
+    const associateUrl = formData.get('associateUrl') as string | null
     const type = formData.get('type') as string // "CV", "COVER_LETTER", "OTHER"
+
+    // Cas 1 : Association d'un CV existant
+    if (associateName && associateUrl) {
+      const document = await db.document.create({
+        data: {
+          name: associateName,
+          url: associateUrl,
+          type: type || 'OTHER',
+          jobApplicationId: id
+        }
+      })
+
+      // Définir automatiquement comme CV actif appliqué
+      if (type === 'CV') {
+        await db.jobApplication.update({
+          where: { id },
+          data: { appliedCvId: document.id }
+        })
+      }
+
+      return NextResponse.json({ success: true, document }, { status: 201 })
+    }
 
     if (!file) {
       return NextResponse.json(
@@ -84,6 +108,14 @@ export async function POST(
         jobApplicationId: id
       }
     })
+
+    // Définir automatiquement comme CV actif appliqué
+    if (type === 'CV') {
+      await db.jobApplication.update({
+        where: { id },
+        data: { appliedCvId: document.id }
+      })
+    }
 
     return NextResponse.json({ success: true, document }, { status: 201 })
   } catch (e) {

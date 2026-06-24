@@ -47,8 +47,8 @@ export function Sidebar({ user, stats }: SidebarProps) {
     : user?.email?.[0]?.toUpperCase() ?? 'U'
 
   const isActive = (href: string) => {
-    if (href === '/dashboard') return pathname.startsWith('/dashboard')
-    if (href === '/boards') return pathname === '/boards' || pathname.startsWith('/boards/')
+    if (href === '/dashboard') return pathname === '/dashboard'
+    if (href === '/boards') return pathname === '/boards' || pathname.startsWith('/boards/') || pathname.startsWith('/dashboard/')
     return pathname === href || pathname.startsWith(href + '/')
   }
 

@@ -161,6 +161,10 @@ model JobApplication {
   events          Event[]
   history         JobApplicationHistory[]
 
+  // Relation pour A/B testing des CVs
+  appliedCvId     String?
+  appliedCv       Document? @relation("AppliedCv", fields: [appliedCvId], references: [id], onDelete: SetNull)
+
   deletedAt       DateTime? // Soft delete
   appliedAt       DateTime? // Date d'envoi de la candidature
   
@@ -202,6 +206,9 @@ model Document {
   jobApplicationId String
   jobApplication   JobApplication @relation(fields: [jobApplicationId], references: [id], onDelete: Cascade)
   
+  // Relation inverse pour l'A/B testing des CVs
+  appliedJobs      JobApplication[] @relation("AppliedCv")
+
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
 

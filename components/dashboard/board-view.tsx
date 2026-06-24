@@ -111,6 +111,8 @@ export function BoardView({ initialColumns, userId, boardId, boardName, boardEmo
 
   // Document à prévisualiser dans l'onglet Documents
   const [previewDoc, setPreviewDoc] = React.useState<{ id: string; name: string; url: string; type: string } | null>(null)
+  const [existingCvs, setExistingCvs] = React.useState<{ name: string; url: string }[]>([])
+  const [selectedExistingCvUrl, setSelectedExistingCvUrl] = React.useState('')
 
   // Sélecteur de board et modal de création de board
   const [showBoardDropdown, setShowBoardDropdown] = React.useState(false)
@@ -118,6 +120,7 @@ export function BoardView({ initialColumns, userId, boardId, boardName, boardEmo
   const [newBoardName, setNewBoardName] = React.useState('')
   const [newBoardEmoji, setNewBoardEmoji] = React.useState('🚀')
   const [isCreatingBoard, setIsCreatingBoard] = React.useState(false)
+  const [isClearingBoard, setIsClearingBoard] = React.useState(false)
 
   // Ajout rapide d'offres dans les colonnes
   const [activeQuickAddColId, setActiveQuickAddColId] = React.useState<string | null>(null)
@@ -140,10 +143,49 @@ export function BoardView({ initialColumns, userId, boardId, boardName, boardEmo
     }
   }, [initialColumns])
 
+  const loadExistingCvs = async () => {
+    try {
+      const res = await fetch('/api/jobs/cvs')
+      if (res.ok) {
+        const data = await res.json()
+        setExistingCvs(data.cvs || [])
+      }
+    } catch (err) {
+      console.error('Failed to load user CVs:', err)
+    }
+  }
+
+  const handleAssociateExistingCv = async (cvUrl: string) => {
+    if (!selectedJob || !cvUrl) return
+    const cv = existingCvs.find(c => c.url === cvUrl)
+    if (!cv) return
+    
+    try {
+      const formData = new FormData()
+      formData.append('associateName', cv.name)
+      formData.append('associateUrl', cv.url)
+      formData.append('type', 'CV')
+      
+      const res = await fetch(`/api/jobs/${selectedJob.id}/documents`, {
+        method: 'POST',
+        body: formData
+      })
+      if (res.ok) {
+        setSelectedExistingCvUrl('')
+        router.refresh()
+      } else {
+        alert("Erreur lors de l'association du CV.")
+      }
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
   // Chargement des données dans le formulaire d'édition au clic sur une carte
   const handleOpenModal = (job: ClientJob) => {
     setActiveTab('info')
     setPreviewDoc(null)
+    setSelectedExistingCvUrl('')
     setSelectedJob(job)
     setEditTitle(job.title)
     setEditLocation(job.location || '')
@@ -158,6 +200,7 @@ export function BoardView({ initialColumns, userId, boardId, boardName, boardEmo
     setEditTags(job.tags?.map(t => t.name) || [])
     setNewTagInput('')
     setEditAppliedAt(job.appliedAt ? new Date(job.appliedAt).toISOString().split('T')[0] : '')
+    loadExistingCvs()
   }
 
   // Extrait tous les tags uniques pour le filtrage
@@ -788,6 +831,32 @@ export function BoardView({ initialColumns, userId, boardId, boardName, boardEmo
     }
   }
 
+  // Suppression de toutes les opportunités du tableau
+  const handleClearBoard = async () => {
+    if (!boardId) return
+    if (!confirm("Attention : Voulez-vous vraiment vider entièrement ce tableau ? Cette action supprimera définitivement toutes les candidatures qu'il contient. Cette action est irréversible !")) {
+      return
+    }
+
+    setIsClearingBoard(true)
+    try {
+      const res = await fetch(`/api/boards/${boardId}/clear`, {
+        method: 'DELETE'
+      })
+
+      if (res.ok) {
+        router.refresh()
+      } else {
+        alert("Erreur lors du vidage du tableau.")
+      }
+    } catch (err) {
+      console.error(err)
+      alert("Une erreur est survenue lors du vidage.")
+    } finally {
+      setIsClearingBoard(false)
+    }
+  }
+
   // Ajout de notes sur la carte
   const handleAddNote = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -1006,6 +1075,16 @@ export function BoardView({ initialColumns, userId, boardId, boardName, boardEmo
           >
             <FileSpreadsheet size={14} />
             <span className="hidden sm:inline">Excel</span>
+          </button>
+
+          <button 
+            onClick={handleClearBoard}
+            disabled={isClearingBoard}
+            className="py-2 px-4 rounded-xl text-xs font-semibold flex items-center gap-2 border border-red-500/10 bg-red-500/5 hover:bg-red-500/10 text-red-400 transition-all duration-200 cursor-pointer disabled:opacity-50"
+            title="Vider entièrement ce tableau"
+          >
+            {isClearingBoard ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+            <span className="hidden sm:inline">Vider</span>
           </button>
         </div>
       </header>
@@ -1794,7 +1873,7 @@ export function BoardView({ initialColumns, userId, boardId, boardName, boardEmo
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
                     {/* Curriculum Vitae */}
-                    <div className="bg-foreground/2 border border-border-color rounded-xl p-4 flex flex-col justify-between h-[110px]">
+                    <div className="bg-foreground/2 border border-border-color rounded-xl p-4 flex flex-col justify-between min-h-[110px] h-auto">
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-[11px] font-bold text-text-muted">Curriculum Vitae (CV)</span>
                         {selectedJob.documents?.find(d => d.type === 'CV') && (
@@ -1834,16 +1913,44 @@ export function BoardView({ initialColumns, userId, boardId, boardName, boardEmo
                           </a>
                         </div>
                       ) : (
-                        <label className="flex items-center gap-1.5 text-xs text-text-muted cursor-pointer hover:text-foreground">
-                          <Upload size={12} />
-                          <span>Choisir un fichier CV</span>
-                          <input
-                            type="file"
-                            accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.txt"
-                            className="hidden"
-                            onChange={(e) => handleUploadDocument(e, 'CV')}
-                          />
-                        </label>
+                        <div className="flex flex-col gap-3">
+                          <label className="flex items-center gap-1.5 text-xs text-text-muted cursor-pointer hover:text-foreground">
+                            <Upload size={12} />
+                            <span>Choisir un fichier CV</span>
+                            <input
+                              type="file"
+                              accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.txt"
+                              className="hidden"
+                              onChange={(e) => handleUploadDocument(e, 'CV')}
+                            />
+                          </label>
+
+                          {existingCvs.length > 0 && (
+                            <div className="pt-2 border-t border-border-color/50 flex flex-col gap-1.5">
+                              <span className="text-[10px] text-text-muted font-display">Ou lier un CV déjà utilisé :</span>
+                              <div className="flex gap-2">
+                                <select
+                                  value={selectedExistingCvUrl}
+                                  onChange={(e) => setSelectedExistingCvUrl(e.target.value)}
+                                  className="flex-1 bg-background border border-border-color rounded-lg text-[10px] px-2 py-1 focus:outline-none focus:border-primary text-foreground min-w-0"
+                                >
+                                  <option value="">Sélectionner...</option>
+                                  {existingCvs.map(cv => (
+                                    <option key={cv.url} value={cv.url}>{cv.name}</option>
+                                  ))}
+                                </select>
+                                <button
+                                  type="button"
+                                  disabled={!selectedExistingCvUrl}
+                                  onClick={() => handleAssociateExistingCv(selectedExistingCvUrl)}
+                                  className="bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 rounded-lg px-2 py-0.5 text-[10px] font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex-shrink-0"
+                                >
+                                  Lier
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       )}
                     </div>
 
