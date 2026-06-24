@@ -64,7 +64,7 @@ export default async function BoardsPage() {
     emoji: board.emoji,
     description: board.description,
     isDefault: board.isDefault,
-    jobCount: board.columns.reduce((sum, col) => sum + col._count.jobApplications, 0),
+    jobCount: board.columns.reduce((sum: number, col: any) => sum + col._count.jobApplications, 0),
     columnCount: board.columns.length,
     createdAt: board.createdAt.toISOString(),
   }))
