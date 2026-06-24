@@ -58,7 +58,7 @@ export default async function BoardsPage() {
     boards.push(defaultBoard)
   }
 
-  const boardsData = boards.map(board => ({
+  const boardsData = boards.map((board: any) => ({
     id: board.id,
     name: board.name,
     emoji: board.emoji,
