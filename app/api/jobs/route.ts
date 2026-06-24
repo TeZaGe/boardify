@@ -13,7 +13,8 @@ const addJobSchema = z.object({
   url: z.string().max(1000).optional().nullable(),
   salary: z.string().max(100).optional().nullable(),
   source: z.string().max(100).optional().nullable(),
-  appliedAt: z.string().optional().nullable()
+  appliedAt: z.string().optional().nullable(),
+  columnId: z.string().optional().nullable()
 })
 
 export async function POST(request: NextRequest) {
@@ -62,29 +63,45 @@ export async function POST(request: NextRequest) {
 
     const jobData = validation.data
 
-    // 3. Trouver la première colonne Kanban (tableau par défaut)
-    let firstColumn = await db.column.findFirst({
-      where: { userId },
-      orderBy: { order: 'asc' }
-    })
+    // 3. Trouver la colonne Kanban cible
+    let targetColumnId = jobData.columnId
+    
+    if (targetColumnId) {
+      // Vérifie que la colonne appartient bien à l'utilisateur
+      const colExists = await db.column.findFirst({
+        where: { id: targetColumnId, userId }
+      })
+      if (!colExists) {
+        return NextResponse.json(
+          { error: { code: 'INVALID_COLUMN', message: 'La colonne spécifiée est invalide ou ne vous appartient pas.' } },
+          { status: 400 }
+        )
+      }
+    } else {
+      let firstColumn = await db.column.findFirst({
+        where: { userId },
+        orderBy: { order: 'asc' }
+      })
 
-    // Si l'utilisateur n'a pas de colonnes, on initialise son tableau de bord
-    if (!firstColumn) {
-      const columns = await JobService.getBoardData(userId)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      firstColumn = (columns[0] as any) ?? null
-    }
+      // Si l'utilisateur n'a pas de colonnes, on initialise son tableau de bord
+      if (!firstColumn) {
+        const columns = await JobService.getBoardData(userId)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        firstColumn = (columns[0] as any) ?? null
+      }
 
-    if (!firstColumn) {
-      return NextResponse.json(
-        { error: { code: 'NO_COLUMNS', message: 'Aucun tableau trouvé pour cet utilisateur.' } },
-        { status: 400 }
-      )
+      if (!firstColumn) {
+        return NextResponse.json(
+          { error: { code: 'NO_COLUMNS', message: 'Aucun tableau trouvé pour cet utilisateur.' } },
+          { status: 400 }
+        )
+      }
+      targetColumnId = firstColumn.id
     }
 
     // 4. Calculer le prochain ordre dans cette colonne
     const maxOrderJob = await db.jobApplication.findFirst({
-      where: { userId, columnId: firstColumn.id },
+      where: { userId, columnId: targetColumnId },
       orderBy: { order: 'desc' }
     })
     const nextOrder = maxOrderJob ? maxOrderJob.order + 1 : 1
@@ -97,8 +114,8 @@ export async function POST(request: NextRequest) {
       description: jobData.description ?? undefined,
       url: jobData.url ?? undefined,
       salary: jobData.salary ?? undefined,
-      source: jobData.source ?? 'Scraper Extension',
-      columnId: firstColumn.id,
+      source: jobData.source ?? 'Manuel',
+      columnId: targetColumnId,
       order: nextOrder,
       appliedAt: jobData.appliedAt ? new Date(jobData.appliedAt) : undefined
     })

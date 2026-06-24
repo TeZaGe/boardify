@@ -25,6 +25,7 @@ import {
   Settings,
   Tag,
   ChevronLeft,
+  ChevronDown,
   ChevronRight,
   FileText,
   Upload
@@ -41,9 +42,10 @@ interface BoardViewProps {
   boardId?: string
   boardName?: string
   boardEmoji?: string
+  boards?: { id: string; name: string; emoji: string | null }[]
 }
 
-export function BoardView({ initialColumns, userId, boardId, boardName, boardEmoji }: BoardViewProps) {
+export function BoardView({ initialColumns, userId, boardId, boardName, boardEmoji, boards = [] }: BoardViewProps) {
   const router = useRouter()
   
   // États de données et filtres
@@ -103,6 +105,22 @@ export function BoardView({ initialColumns, userId, boardId, boardName, boardEmo
   // Date d'envoi de la candidature
   const [editAppliedAt, setEditAppliedAt] = React.useState('')
 
+  // Onglet actif pour la modale de détails
+  const [activeTab, setActiveTab] = React.useState<'info' | 'notes' | 'contacts' | 'documents' | 'history'>('info')
+
+  // Sélecteur de board et modal de création de board
+  const [showBoardDropdown, setShowBoardDropdown] = React.useState(false)
+  const [showCreateBoardModal, setShowCreateBoardModal] = React.useState(false)
+  const [newBoardName, setNewBoardName] = React.useState('')
+  const [newBoardEmoji, setNewBoardEmoji] = React.useState('🚀')
+  const [isCreatingBoard, setIsCreatingBoard] = React.useState(false)
+
+  // Ajout rapide d'offres dans les colonnes
+  const [activeQuickAddColId, setActiveQuickAddColId] = React.useState<string | null>(null)
+  const [quickAddTitle, setQuickAddTitle] = React.useState('')
+  const [quickAddCompany, setQuickAddCompany] = React.useState('')
+  const [isQuickAdding, setIsQuickAdding] = React.useState(false)
+
   // Synchronisation de l'état local quand le parent (Server Component) se rafraîchit
   React.useEffect(() => {
     setColumns(initialColumns)
@@ -120,6 +138,7 @@ export function BoardView({ initialColumns, userId, boardId, boardName, boardEmo
 
   // Chargement des données dans le formulaire d'édition au clic sur une carte
   const handleOpenModal = (job: ClientJob) => {
+    setActiveTab('info')
     setSelectedJob(job)
     setEditTitle(job.title)
     setEditLocation(job.location || '')
@@ -788,6 +807,66 @@ export function BoardView({ initialColumns, userId, boardId, boardName, boardEmo
     }
   }
 
+  // Création d'un nouveau board rapidement
+  const handleCreateBoard = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newBoardName.trim()) return
+    setIsCreatingBoard(true)
+    try {
+      const res = await fetch('/api/boards', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newBoardName,
+          emoji: newBoardEmoji,
+          description: ''
+        })
+      })
+      if (res.ok) {
+        const board = await res.json()
+        setNewBoardName('')
+        setShowCreateBoardModal(false)
+        setShowBoardDropdown(false)
+        router.push(`/dashboard/${board.id}`)
+      } else {
+        alert("Erreur lors de la création du tableau.")
+      }
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setIsCreatingBoard(false)
+    }
+  }
+
+  // Ajout rapide d'une offre directement dans une colonne
+  const handleQuickAddJob = async (columnId: string) => {
+    if (!quickAddTitle.trim() || !quickAddCompany.trim()) return
+    setIsQuickAdding(true)
+    try {
+      const res = await fetch('/api/jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: quickAddTitle,
+          companyName: quickAddCompany,
+          columnId
+        })
+      })
+      if (res.ok) {
+        setQuickAddTitle('')
+        setQuickAddCompany('')
+        setActiveQuickAddColId(null)
+        router.refresh()
+      } else {
+        alert("Erreur lors de l'ajout rapide de la candidature.")
+      }
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setIsQuickAdding(false)
+    }
+  }
+
   return (
     <main className="flex-1 flex flex-col overflow-hidden relative">
       
@@ -803,11 +882,63 @@ export function BoardView({ initialColumns, userId, boardId, boardName, boardEmo
             Tableaux
           </Link>
           <span className="text-border-color text-xs">/</span>
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="text-base flex-shrink-0">{boardEmoji ?? '\ud83d\udccb'}</span>
-            <span className="font-display font-semibold text-sm truncate text-foreground">
-              {boardName ?? 'Mon tableau'}
-            </span>
+          <div className="relative">
+            <button
+              onClick={() => setShowBoardDropdown(!showBoardDropdown)}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-border-color bg-card-bg hover:bg-foreground/5 text-foreground transition-all duration-200 cursor-pointer min-w-0 select-none"
+            >
+              <span className="text-base flex-shrink-0">{boardEmoji ?? '📋'}</span>
+              <span className="font-display font-semibold text-sm truncate text-foreground max-w-[140px] md:max-w-[200px]">
+                {boardName ?? 'Mon tableau'}
+              </span>
+              <ChevronDown size={14} className={`text-text-muted transition-transform duration-200 ${showBoardDropdown ? 'rotate-180' : ''}`} />
+            </button>
+
+            {showBoardDropdown && (
+              <>
+                <div 
+                  className="fixed inset-0 z-10" 
+                  onClick={() => setShowBoardDropdown(false)} 
+                />
+                <div className="absolute left-0 mt-1.5 w-64 bg-bg-side border border-border-color rounded-2xl shadow-xl z-20 py-2 animate-slide-up">
+                  <div className="px-3 py-1.5 text-[10px] font-bold text-text-muted uppercase tracking-wider">
+                    Mes Tableaux ({boards.length})
+                  </div>
+                  <div className="max-h-60 overflow-y-auto px-1 space-y-0.5">
+                    {boards.map(b => (
+                      <Link
+                        key={b.id}
+                        href={`/dashboard/${b.id}`}
+                        onClick={() => setShowBoardDropdown(false)}
+                        className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+                          b.id === boardId
+                            ? 'bg-primary/10 text-primary'
+                            : 'text-text-muted hover:text-foreground hover:bg-foreground/5'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-sm flex-shrink-0">{b.emoji ?? '📋'}</span>
+                          <span className="truncate">{b.name}</span>
+                        </div>
+                        {b.id === boardId && <span className="w-1.5 h-1.5 rounded-full bg-primary" />}
+                      </Link>
+                    ))}
+                  </div>
+                  <div className="border-t border-border-color mt-2 pt-2 px-2">
+                    <button
+                      onClick={() => {
+                        setShowCreateBoardModal(true)
+                        setShowBoardDropdown(false)
+                      }}
+                      className="w-full bg-primary/10 border border-primary/20 hover:bg-primary/15 text-purple-400 text-xs font-semibold py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-all duration-150 cursor-pointer"
+                    >
+                      <Plus size={14} />
+                      Nouveau tableau
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
           <span className="text-border-color hidden sm:block">|</span>
           <div className="relative hidden sm:block">
@@ -1244,6 +1375,70 @@ export function BoardView({ initialColumns, userId, boardId, boardName, boardEmo
               )}
             </div>
 
+            {/* Formulaire ou bouton d'ajout rapide de carte */}
+            <div className="mt-3 border-t border-border-color/40 pt-3">
+              {activeQuickAddColId === col.id ? (
+                <form 
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    handleQuickAddJob(col.id)
+                  }}
+                  className="bg-card-bg border border-border-color rounded-2xl p-3 flex flex-col gap-2 animate-slide-up"
+                >
+                  <input 
+                    type="text"
+                    required
+                    autoFocus
+                    value={quickAddTitle}
+                    onChange={(e) => setQuickAddTitle(e.target.value)}
+                    placeholder="Intitulé du poste..."
+                    className="w-full bg-foreground/4 border border-border-color py-1.5 px-2 rounded-lg text-xs focus:outline-none focus:border-primary transition-colors text-foreground"
+                  />
+                  <input 
+                    type="text"
+                    required
+                    value={quickAddCompany}
+                    onChange={(e) => setQuickAddCompany(e.target.value)}
+                    placeholder="Entreprise..."
+                    className="w-full bg-foreground/4 border border-border-color py-1.5 px-2 rounded-lg text-xs focus:outline-none focus:border-primary transition-colors text-foreground"
+                  />
+                  <div className="flex justify-end gap-1.5 mt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveQuickAddColId(null)
+                        setQuickAddTitle('')
+                        setQuickAddCompany('')
+                      }}
+                      className="px-2.5 py-1.5 border border-border-color rounded-lg text-[10px] font-semibold hover:bg-foreground/5 text-foreground cursor-pointer transition-colors"
+                    >
+                      Annuler
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isQuickAdding || !quickAddTitle.trim() || !quickAddCompany.trim()}
+                      className="bg-primary hover:bg-primary-hover text-white py-1.5 px-2.5 rounded-lg text-[10px] font-semibold flex items-center gap-1 cursor-pointer transition-all duration-150 disabled:opacity-50"
+                    >
+                      {isQuickAdding ? <Loader2 size={10} className="animate-spin" /> : <Plus size={10} />}
+                      Ajouter
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <button
+                  onClick={() => {
+                    setActiveQuickAddColId(col.id)
+                    setQuickAddTitle('')
+                    setQuickAddCompany('')
+                  }}
+                  className="w-full py-2 border border-dashed border-border-color hover:border-primary/40 rounded-xl text-text-muted hover:text-primary hover:bg-primary-subtle text-xs font-semibold flex items-center justify-center gap-1.5 transition-all duration-200 cursor-pointer"
+                >
+                  <Plus size={14} />
+                  Ajouter une offre
+                </button>
+              )}
+            </div>
+
           </div>
         ))}
       </div>
@@ -1274,161 +1469,327 @@ export function BoardView({ initialColumns, userId, boardId, boardName, boardEmo
               </button>
             </div>
 
-            {/* Corps Modale */}
-            <div className="flex-1 overflow-y-auto p-6 grid grid-cols-1 md:grid-cols-5 gap-6">
+            {/* Barre d'onglets premium */}
+            <div className="flex border-b border-border-color bg-foreground/2 px-6 overflow-x-auto scrollbar-none">
+              {[
+                { id: 'info', label: 'Détails', icon: Briefcase },
+                { id: 'notes', label: `Notes (${selectedJob.notes.length})`, icon: MessageSquare },
+                { id: 'contacts', label: 'Contact Recruteur', icon: User },
+                { id: 'documents', label: 'Documents', icon: FileText },
+                { id: 'history', label: 'Historique', icon: Clock }
+              ].map(tab => {
+                const Icon = tab.icon
+                const active = activeTab === tab.id
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setActiveTab(tab.id as any)}
+                    className={`flex items-center gap-1.5 py-3 px-1 text-xs font-semibold border-b-2 transition-all cursor-pointer whitespace-nowrap mr-6 ${
+                      active
+                        ? 'border-primary text-primary font-bold'
+                        : 'border-transparent text-text-muted hover:text-foreground'
+                    }`}
+                  >
+                    <Icon size={14} />
+                    {tab.label}
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* Corps Modale - Contenu par Onglet */}
+            <div className="flex-1 overflow-y-auto p-6 min-h-[350px] text-left">
               
-              {/* Formulaire Principal (Gauche) */}
-              <form onSubmit={handleSaveChanges} className="md:col-span-3 flex flex-col gap-4">
-                
-                <div>
-                  <label className="block text-[11px] font-semibold text-text-muted mb-1.5">Intitulé du Poste</label>
-                  <input 
-                    type="text"
-                    required
-                    value={editTitle}
-                    onChange={(e) => setEditTitle(e.target.value)}
-                    className="w-full bg-foreground/4 border border-border-color py-2 px-3 rounded-lg text-sm focus:outline-none focus:border-primary transition-colors"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[11px] font-semibold text-text-muted mb-1.5">Localisation</label>
-                    <input 
-                      type="text"
-                      value={editLocation}
-                      onChange={(e) => setEditLocation(e.target.value)}
-                      className="w-full bg-foreground/4 border border-border-color py-2 px-3 rounded-lg text-sm focus:outline-none focus:border-primary transition-colors"
-                      placeholder="Ex: Paris / Remote"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-semibold text-text-muted mb-1.5">Rémunération</label>
-                    <input 
-                      type="text"
-                      value={editSalary}
-                      onChange={(e) => setEditSalary(e.target.value)}
-                      className="w-full bg-foreground/4 border border-border-color py-2 px-3 rounded-lg text-sm focus:outline-none focus:border-primary transition-colors"
-                      placeholder="Ex: 45k - 50k"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-[11px] font-semibold text-text-muted mb-1.5">Étape (Colonne Kanban)</label>
-                    <select
-                      value={editColumnId}
-                      onChange={(e) => setEditColumnId(e.target.value)}
-                      className="w-full bg-foreground/4 border border-border-color py-2.5 px-3 rounded-lg text-sm text-foreground focus:outline-none focus:border-primary cursor-pointer transition-colors"
-                    >
-                      {columns.map(c => (
-                        <option key={c.id} value={c.id} className="bg-bg-side text-foreground">{c.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-semibold text-text-muted mb-1.5">Date d'envoi</label>
-                    <input 
-                      type="date"
-                      value={editAppliedAt}
-                      onChange={(e) => setEditAppliedAt(e.target.value)}
-                      className="w-full bg-foreground/4 border border-border-color py-2 px-3 rounded-lg text-sm text-foreground focus:outline-none focus:border-primary transition-colors"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-semibold text-text-muted mb-1.5">Lien de l'offre</label>
-                    <div className="flex gap-2">
+              {activeTab === 'info' && (
+                <form onSubmit={handleSaveChanges} className="flex flex-col gap-4 h-full justify-between">
+                  <div className="flex flex-col gap-4">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-text-muted mb-1.5 font-display">Intitulé du Poste</label>
                       <input 
                         type="text"
-                        value={editUrl}
-                        onChange={(e) => setEditUrl(e.target.value)}
-                        className="flex-1 bg-foreground/4 border border-border-color py-2 px-3 rounded-lg text-sm focus:outline-none focus:border-primary transition-colors"
-                        placeholder="https://..."
+                        required
+                        value={editTitle}
+                        onChange={(e) => setEditTitle(e.target.value)}
+                        className="w-full bg-foreground/4 border border-border-color py-2 px-3 rounded-lg text-sm focus:outline-none focus:border-primary transition-colors text-foreground"
                       />
-                      {editUrl && (
-                        <a 
-                          href={editUrl} 
-                          target="_blank" 
-                          rel="noreferrer"
-                          className="bg-foreground/5 hover:bg-primary/10 border border-border-color text-text-muted hover:text-primary p-2 rounded-lg flex items-center justify-center animate-pulse-subtle"
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-text-muted mb-1.5 font-display font-medium">Localisation</label>
+                        <input 
+                          type="text"
+                          value={editLocation}
+                          onChange={(e) => setEditLocation(e.target.value)}
+                          className="w-full bg-foreground/4 border border-border-color py-2 px-3 rounded-lg text-sm focus:outline-none focus:border-primary transition-colors text-foreground"
+                          placeholder="Ex: Paris / Remote"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-text-muted mb-1.5 font-display font-medium">Rémunération</label>
+                        <input 
+                          type="text"
+                          value={editSalary}
+                          onChange={(e) => setEditSalary(e.target.value)}
+                          className="w-full bg-foreground/4 border border-border-color py-2 px-3 rounded-lg text-sm focus:outline-none focus:border-primary transition-colors text-foreground"
+                          placeholder="Ex: 45k - 50k"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-text-muted mb-1.5 font-display font-medium">Étape (Colonne Kanban)</label>
+                        <select
+                          value={editColumnId}
+                          onChange={(e) => setEditColumnId(e.target.value)}
+                          className="w-full bg-foreground/4 border border-border-color py-2.5 px-3 rounded-lg text-sm text-foreground focus:outline-none focus:border-primary cursor-pointer transition-colors"
                         >
-                          <ExternalLink size={16} />
-                        </a>
-                      )}
+                          {columns.map(c => (
+                            <option key={c.id} value={c.id} className="bg-bg-side text-foreground">{c.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-text-muted mb-1.5 font-display font-medium">Date d'envoi</label>
+                        <input 
+                          type="date"
+                          value={editAppliedAt}
+                          onChange={(e) => setEditAppliedAt(e.target.value)}
+                          className="w-full bg-foreground/4 border border-border-color py-2 px-3 rounded-lg text-sm text-foreground focus:outline-none focus:border-primary transition-colors"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-text-muted mb-1.5 font-display font-medium">Lien de l'offre</label>
+                        <div className="flex gap-2">
+                          <input 
+                            type="text"
+                            value={editUrl}
+                            onChange={(e) => setEditUrl(e.target.value)}
+                            className="flex-1 bg-foreground/4 border border-border-color py-2 px-3 rounded-lg text-sm focus:outline-none focus:border-primary transition-colors text-foreground"
+                            placeholder="https://..."
+                          />
+                          {editUrl && (
+                            <a 
+                              href={editUrl} 
+                              target="_blank" 
+                              rel="noreferrer"
+                              className="bg-foreground/5 hover:bg-primary/10 border border-border-color text-text-muted hover:text-primary p-2 rounded-lg flex items-center justify-center transition-all cursor-pointer"
+                            >
+                              <ExternalLink size={16} />
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="border-t border-border-color/60 pt-4 mt-2">
+                      <h4 className="text-xs font-bold text-text-main mb-3 flex items-center gap-1.5 font-display">
+                        <Tag size={14} className="text-primary" />
+                        Étiquettes / Tags
+                      </h4>
+                      <div className="flex flex-wrap gap-1.5 mb-2.5">
+                        {editTags.length === 0 ? (
+                          <span className="text-[11px] text-text-muted italic">Aucune étiquette</span>
+                        ) : (
+                          editTags.map((tag, index) => (
+                            <span key={index} className="text-[11px] bg-primary/15 border border-primary/30 text-purple-400 px-2.5 py-0.5 rounded-full font-medium flex items-center gap-1">
+                              {tag}
+                              <button
+                                type="button"
+                                onClick={() => setEditTags(editTags.filter(t => t !== tag))}
+                                className="hover:text-red-400 cursor-pointer font-bold text-xs"
+                              >
+                                ×
+                              </button>
+                            </span>
+                          ))
+                        )}
+                      </div>
+                      <div className="flex gap-2 max-w-[280px]">
+                        <input
+                          type="text"
+                          value={newTagInput}
+                          onChange={(e) => setNewTagInput(e.target.value)}
+                          placeholder="Ajouter un tag..."
+                          className="flex-1 bg-foreground/4 border border-border-color py-1.5 px-3 rounded-lg text-xs focus:outline-none focus:border-primary transition-colors text-foreground"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault()
+                              if (newTagInput.trim() && !editTags.includes(newTagInput.trim())) {
+                                setEditTags([...editTags, newTagInput.trim()])
+                                setNewTagInput('')
+                              }
+                            }
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (newTagInput.trim() && !editTags.includes(newTagInput.trim())) {
+                              setEditTags([...editTags, newTagInput.trim()])
+                              setNewTagInput('')
+                            }
+                          }}
+                          className="bg-primary/10 border border-primary/20 hover:bg-primary/15 text-purple-400 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer"
+                        >
+                          Ajouter
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                {/* Section Étiquettes / Tags */}
-                <div className="border-t border-border-color pt-4 mt-2">
-                  <h4 className="text-xs font-bold text-text-main mb-3 flex items-center gap-1.5">
-                    <Tag size={14} className="text-primary" />
-                    Étiquettes / Tags
+                  <div className="border-t border-border-color pt-6 mt-6 flex justify-between gap-3">
+                    <div className="flex gap-2">
+                      <button 
+                        type="button"
+                        disabled={isArchiving}
+                        onClick={handleArchiveJob}
+                        className="bg-amber-500/10 hover:bg-amber-500 border border-amber-500/20 text-amber-400 hover:text-white py-2 px-4 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all duration-150 disabled:opacity-50"
+                      >
+                        {isArchiving ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                        Archiver
+                      </button>
+                      <button 
+                        type="button"
+                        disabled={isDeleting}
+                        onClick={handleDeleteJob}
+                        className="bg-red-500/10 hover:bg-red-500 border border-red-500/20 text-red-400 hover:text-white py-2 px-4 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all duration-150 disabled:opacity-50"
+                      >
+                        {isDeleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                        Supprimer
+                      </button>
+                    </div>
+                    <button 
+                      type="submit"
+                      disabled={isSavingJob}
+                      className="bg-primary hover:bg-primary-hover text-white py-2 px-5 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all duration-150 disabled:opacity-50"
+                    >
+                      {isSavingJob ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                      Enregistrer
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {activeTab === 'notes' && (
+                <div className="flex flex-col gap-4">
+                  <h4 className="text-xs font-bold text-text-main flex items-center gap-1.5 font-display">
+                    <MessageSquare size={14} className="text-primary" />
+                    Commentaires & Notes ({selectedJob.notes.length})
                   </h4>
-                  
-                  <div className="flex flex-wrap gap-1.5 mb-2.5">
-                    {editTags.length === 0 ? (
-                      <span className="text-[11px] text-text-muted italic">Aucune étiquette</span>
+
+                  {/* Formulaire d'ajout de note */}
+                  <form onSubmit={handleAddNote}>
+                    <textarea 
+                      value={newNote}
+                      onChange={(e) => setNewNote(e.target.value)}
+                      required
+                      placeholder="Ajouter une note de préparation, un compte-rendu d'appel..."
+                      className="w-full h-[100px] bg-foreground/4 border border-border-color rounded-xl p-3 text-xs leading-relaxed text-foreground focus:outline-none focus:border-primary resize-none mb-2"
+                    />
+                    <button 
+                      type="submit"
+                      disabled={isSavingNote || !newNote.trim()}
+                      className="bg-primary hover:bg-primary-hover text-white py-1.5 px-4 rounded-lg text-xs font-bold float-right cursor-pointer disabled:opacity-50"
+                    >
+                      {isSavingNote ? 'Envoi...' : 'Ajouter la note'}
+                    </button>
+                    <div className="clear-both" />
+                  </form>
+
+                  {/* Historique des notes */}
+                  <div className="flex flex-col gap-2 max-h-[300px] overflow-y-auto pr-1 mt-2">
+                    {selectedJob.notes.length === 0 ? (
+                      <p className="text-[11px] text-text-muted italic py-6 text-center">Aucune note enregistrée.</p>
                     ) : (
-                      editTags.map((tag, index) => (
-                        <span key={index} className="text-[11px] bg-primary/15 border border-primary/30 text-purple-400 px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
-                          {tag}
-                          <button
-                            type="button"
-                            onClick={() => setEditTags(editTags.filter(t => t !== tag))}
-                            className="hover:text-red-400 cursor-pointer font-bold text-xs"
-                          >
-                            ×
-                          </button>
-                        </span>
+                      selectedJob.notes.map((note) => (
+                        <div key={note.id} className="bg-foreground/2 border border-border-color rounded-xl p-3">
+                          <p className="text-[11px] text-text-main leading-relaxed mb-1.5 whitespace-pre-wrap">{note.content}</p>
+                          <span className="text-[9px] text-text-muted font-medium">
+                            Le {new Date(note.createdAt).toLocaleDateString('fr-FR')} à {new Date(note.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
                       ))
                     )}
                   </div>
+                </div>
+              )}
 
-                  <div className="flex gap-2 max-w-[280px]">
-                    <input
-                      type="text"
-                      value={newTagInput}
-                      onChange={(e) => setNewTagInput(e.target.value)}
-                      placeholder="Ajouter un tag..."
-                      className="flex-1 bg-foreground/4 border border-border-color py-1.5 px-3 rounded-lg text-xs focus:outline-none focus:border-primary transition-colors"
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault()
-                          if (newTagInput.trim() && !editTags.includes(newTagInput.trim())) {
-                            setEditTags([...editTags, newTagInput.trim()])
-                            setNewTagInput('')
-                          }
-                        }
-                      }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (newTagInput.trim() && !editTags.includes(newTagInput.trim())) {
-                          setEditTags([...editTags, newTagInput.trim()])
-                          setNewTagInput('')
-                        }
-                      }}
-                      className="bg-primary/10 border border-primary/20 hover:bg-primary/15 text-purple-400 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer"
+              {activeTab === 'contacts' && (
+                <form onSubmit={handleSaveChanges} className="flex flex-col gap-4 h-full justify-between">
+                  <div className="flex flex-col gap-4">
+                    <h4 className="text-xs font-bold text-text-main flex items-center gap-1.5 font-display">
+                      <User size={14} className="text-primary" />
+                      Contact Recruteur / RH
+                    </h4>
+                    
+                    <div className="flex flex-col gap-3">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-text-muted mb-1.5 font-display">Nom du contact</label>
+                        <input 
+                          type="text"
+                          value={editContactName}
+                          onChange={(e) => setEditContactName(e.target.value)}
+                          className="w-full bg-foreground/4 border border-border-color py-2 px-3 rounded-lg text-sm focus:outline-none focus:border-primary transition-colors text-foreground"
+                          placeholder="Ex: Jean Dupont"
+                        />
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="relative">
+                          <label className="block text-[11px] font-semibold text-text-muted mb-1.5 font-display">Email</label>
+                          <div className="relative">
+                            <Mail size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+                            <input 
+                              type="email"
+                              value={editContactEmail}
+                              onChange={(e) => setEditContactEmail(e.target.value)}
+                              className="w-full bg-foreground/4 border border-border-color py-2 pl-9 pr-3 rounded-lg text-sm focus:outline-none focus:border-primary transition-colors text-foreground"
+                              placeholder="recruteur@entreprise.com"
+                            />
+                          </div>
+                        </div>
+                        <div className="relative">
+                          <label className="block text-[11px] font-semibold text-text-muted mb-1.5 font-display">Téléphone</label>
+                          <div className="relative">
+                            <Phone size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+                            <input 
+                              type="text"
+                              value={editContactPhone}
+                              onChange={(e) => setEditContactPhone(e.target.value)}
+                              className="w-full bg-foreground/4 border border-border-color py-2 pl-9 pr-3 rounded-lg text-sm focus:outline-none focus:border-primary transition-colors text-foreground"
+                              placeholder="06 12 34 56 78"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-border-color pt-6 mt-6 flex justify-end">
+                    <button 
+                      type="submit"
+                      disabled={isSavingJob}
+                      className="bg-primary hover:bg-primary-hover text-white py-2 px-5 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all duration-150 disabled:opacity-50"
                     >
-                      Ajouter
+                      {isSavingJob ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                      Enregistrer les contacts
                     </button>
                   </div>
-                </div>
+                </form>
+              )}
 
-                {/* Section Documents (CV & Lettres de motivation) */}
-                <div className="border-t border-border-color pt-4 mt-2">
-                  <h4 className="text-xs font-bold text-text-main mb-3 flex items-center gap-1.5">
+              {activeTab === 'documents' && (
+                <div className="flex flex-col gap-4">
+                  <h4 className="text-xs font-bold text-text-main flex items-center gap-1.5 font-display">
                     <FileText size={14} className="text-primary" />
                     CV & Lettre de motivation
                   </h4>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
                     {/* Curriculum Vitae */}
-                    <div className="bg-foreground/2 border border-border-color rounded-xl p-3 flex flex-col justify-between h-[90px]">
+                    <div className="bg-foreground/2 border border-border-color rounded-xl p-4 flex flex-col justify-between h-[110px]">
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-[11px] font-bold text-text-muted">Curriculum Vitae (CV)</span>
                         {selectedJob.documents?.find(d => d.type === 'CV') && (
@@ -1448,10 +1809,10 @@ export function BoardView({ initialColumns, userId, boardId, boardName, boardEmo
                           href={selectedJob.documents.find(d => d.type === 'CV')!.url}
                           target="_blank"
                           rel="noreferrer"
-                          className="text-xs font-medium text-purple-400 hover:underline flex items-center gap-1"
+                          className="text-xs font-medium text-purple-400 hover:underline flex items-center gap-1.5"
                         >
                           <ExternalLink size={12} />
-                          <span className="truncate max-w-[150px]">{selectedJob.documents.find(d => d.type === 'CV')!.name}</span>
+                          <span className="truncate max-w-[200px]">{selectedJob.documents.find(d => d.type === 'CV')!.name}</span>
                         </a>
                       ) : (
                         <label className="flex items-center gap-1.5 text-xs text-text-muted cursor-pointer hover:text-foreground">
@@ -1468,7 +1829,7 @@ export function BoardView({ initialColumns, userId, boardId, boardName, boardEmo
                     </div>
 
                     {/* Lettre de motivation */}
-                    <div className="bg-foreground/2 border border-border-color rounded-xl p-3 flex flex-col justify-between h-[90px]">
+                    <div className="bg-foreground/2 border border-border-color rounded-xl p-4 flex flex-col justify-between h-[110px]">
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-[11px] font-bold text-text-muted">Lettre de motivation (LM)</span>
                         {selectedJob.documents?.find(d => d.type === 'COVER_LETTER') && (
@@ -1488,10 +1849,10 @@ export function BoardView({ initialColumns, userId, boardId, boardName, boardEmo
                           href={selectedJob.documents.find(d => d.type === 'COVER_LETTER')!.url}
                           target="_blank"
                           rel="noreferrer"
-                          className="text-xs font-medium text-purple-400 hover:underline flex items-center gap-1"
+                          className="text-xs font-medium text-purple-400 hover:underline flex items-center gap-1.5"
                         >
                           <ExternalLink size={12} />
-                          <span className="truncate max-w-[150px]">{selectedJob.documents.find(d => d.type === 'COVER_LETTER')!.name}</span>
+                          <span className="truncate max-w-[200px]">{selectedJob.documents.find(d => d.type === 'COVER_LETTER')!.name}</span>
                         </a>
                       ) : (
                         <label className="flex items-center gap-1.5 text-xs text-text-muted cursor-pointer hover:text-foreground">
@@ -1506,144 +1867,37 @@ export function BoardView({ initialColumns, userId, boardId, boardName, boardEmo
                         </label>
                       )}
                     </div>
-
                   </div>
                 </div>
+              )}
 
-                {/* Section Contacts RH */}
-                <div className="border-t border-border-color pt-4 mt-2">
-                  <h4 className="text-xs font-bold text-text-main mb-3 flex items-center gap-1.5">
-                    <User size={14} className="text-primary" />
-                    Contact Recruteur / RH
-                  </h4>
-                  
-                  <div className="grid grid-cols-1 gap-3">
-                    <div>
-                      <input 
-                        type="text"
-                        value={editContactName}
-                        onChange={(e) => setEditContactName(e.target.value)}
-                        className="w-full bg-foreground/4 border border-border-color py-2 px-3 rounded-lg text-sm focus:outline-none focus:border-primary transition-colors"
-                        placeholder="Nom du recruteur..."
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="relative">
-                        <Mail size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
-                        <input 
-                          type="email"
-                          value={editContactEmail}
-                          onChange={(e) => setEditContactEmail(e.target.value)}
-                          className="w-full bg-foreground/4 border border-border-color py-2 pl-9 pr-3 rounded-lg text-sm focus:outline-none focus:border-primary transition-colors"
-                          placeholder="Email..."
-                        />
-                      </div>
-                      <div className="relative">
-                        <Phone size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
-                        <input 
-                          type="text"
-                          value={editContactPhone}
-                          onChange={(e) => setEditContactPhone(e.target.value)}
-                          className="w-full bg-foreground/4 border border-border-color py-2 pl-9 pr-3 rounded-lg text-sm focus:outline-none focus:border-primary transition-colors"
-                          placeholder="Téléphone..."
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Footer Actions de la colonne gauche */}
-                <div className="border-t border-border-color pt-4 mt-4 flex justify-between gap-3">
-                  <div className="flex gap-2">
-                    <button 
-                      type="button"
-                      disabled={isArchiving}
-                      onClick={handleArchiveJob}
-                      className="bg-amber-500/10 hover:bg-amber-500 border border-amber-500/20 text-amber-400 hover:text-white py-2 px-3 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all duration-150 disabled:opacity-50"
-                    >
-                      {isArchiving ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
-                      Archiver
-                    </button>
-                    
-                    <button 
-                      type="button"
-                      disabled={isDeleting}
-                      onClick={handleDeleteJob}
-                      className="bg-red-500/10 hover:bg-red-500 border border-red-500/20 text-red-400 hover:text-white py-2 px-3 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all duration-150 disabled:opacity-50"
-                    >
-                      {isDeleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
-                      Supprimer
-                    </button>
-                  </div>
-
-                  <button 
-                    type="submit"
-                    disabled={isSavingJob}
-                    className="bg-primary hover:bg-primary-hover text-white py-2 px-4 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all duration-150 disabled:opacity-50"
-                  >
-                    {isSavingJob ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
-                    Enregistrer
-                  </button>
-                </div>
-
-              </form>
-
-              {/* Bloc-notes (Droite) */}
-              <div className="md:col-span-2 border-t md:border-t-0 md:border-l border-border-color pt-6 md:pt-0 md:pl-6 flex flex-col justify-between">
-                <div>
-                  <h4 className="text-xs font-bold text-text-main mb-3 flex items-center gap-1.5">
-                    <MessageSquare size={14} className="text-primary" />
-                    Commentaires & Notes ({selectedJob.notes.length})
-                  </h4>
-
-                  {/* Formulaire d'ajout de note */}
-                  <form onSubmit={handleAddNote} className="mb-4">
-                    <textarea 
-                      value={newNote}
-                      onChange={(e) => setNewNote(e.target.value)}
-                      required
-                      placeholder="Ajouter une note de préparation, un compte-rendu d'appel..."
-                      className="w-full h-[80px] bg-foreground/4 border border-border-color rounded-xl p-3 text-xs leading-relaxed text-foreground focus:outline-none focus:border-primary resize-none mb-2"
-                    />
-                    <button 
-                      type="submit"
-                      disabled={isSavingNote || !newNote.trim()}
-                      className="bg-primary/10 border border-primary/20 hover:bg-primary/15 text-purple-400 py-1.5 px-3 rounded-lg text-[10px] font-bold float-right cursor-pointer disabled:opacity-50"
-                    >
-                      {isSavingNote ? 'Envoi...' : 'Ajouter la note'}
-                    </button>
-                    <div className="clear-both" />
-                  </form>
-
-                  {/* Historique des notes */}
-                  <div className="flex flex-col gap-2 max-h-[250px] overflow-y-auto pr-1">
-                    {selectedJob.notes.length === 0 ? (
-                      <p className="text-[11px] text-text-muted italic py-4 text-center">Aucune note enregistrée.</p>
-                    ) : (
-                      selectedJob.notes.map((note) => (
-                        <div key={note.id} className="bg-foreground/2 border border-border-color rounded-lg p-3">
-                          <p className="text-[11px] text-text-main leading-relaxed mb-1.5 whitespace-pre-wrap">{note.content}</p>
-                          <span className="text-[9px] text-text-muted">
-                            Le {new Date(note.createdAt).toLocaleDateString('fr-FR')} à {new Date(note.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-
-                {/* Historique des transitions */}
-                <div className="border-t border-border-color pt-4 mt-4">
-                  <h4 className="text-[10px] font-bold text-text-muted uppercase tracking-wider mb-2">
+              {activeTab === 'history' && (
+                <div className="flex flex-col gap-4">
+                  <h4 className="text-xs font-bold text-text-main flex items-center gap-1.5 font-display">
+                    <Clock size={14} className="text-primary" />
                     Historique de candidature
                   </h4>
-                  <div className="text-[10px] text-text-muted flex flex-col gap-1">
-                    <div>Importé le : {new Date(selectedJob.createdAt).toLocaleDateString('fr-FR')}</div>
-                    <div>Source : {selectedJob.source || 'Manuel'}</div>
+
+                  <div className="bg-foreground/2 border border-border-color rounded-2xl p-4 flex flex-col gap-3 text-xs text-foreground mt-2">
+                    <div className="flex justify-between border-b border-border-color/60 pb-2">
+                      <span className="text-text-muted">Importé le</span>
+                      <span className="font-semibold">{new Date(selectedJob.createdAt).toLocaleDateString('fr-FR')} à {new Date(selectedJob.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</span>
+                    </div>
+                    <div className="flex justify-between border-b border-border-color/60 pb-2">
+                      <span className="text-text-muted">Dernière modification</span>
+                      <span className="font-semibold">{new Date(selectedJob.updatedAt).toLocaleDateString('fr-FR')} à {new Date(selectedJob.updatedAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</span>
+                    </div>
+                    <div className="flex justify-between border-b border-border-color/60 pb-2">
+                      <span className="text-text-muted">Source d'acquisition</span>
+                      <span className="font-semibold">{selectedJob.source || 'Saisie Manuelle'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-text-muted">ID de candidature</span>
+                      <span className="font-mono text-[10px] text-text-muted">{selectedJob.id}</span>
+                    </div>
                   </div>
                 </div>
-
-              </div>
+              )}
 
             </div>
 
@@ -1774,6 +2028,85 @@ export function BoardView({ initialColumns, userId, boardId, boardName, boardEmo
               </div>
 
             </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* ----------------------------------------------------
+          MODALE DE CREATION DE TABLEAU RAPIDE
+          ---------------------------------------------------- */}
+      {showCreateBoardModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-bg-side border border-border-color rounded-2xl w-full max-w-[450px] overflow-hidden flex flex-col shadow-2xl shadow-black/50 animate-slide-up">
+            
+            {/* Header */}
+            <div className="flex justify-between items-center px-6 py-4 border-b border-border-color">
+              <h3 className="font-display font-bold text-base flex items-center gap-2 text-foreground">
+                <Plus size={18} className="text-primary" />
+                Nouveau tableau
+              </h3>
+              <button 
+                onClick={() => setShowCreateBoardModal(false)}
+                className="text-text-muted hover:text-foreground p-1.5 rounded-lg hover:bg-foreground/5 cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Corps */}
+            <form onSubmit={handleCreateBoard} className="p-6 flex flex-col gap-4">
+              <div>
+                <label className="block text-[11px] font-semibold text-text-muted mb-1.5">Nom du tableau</label>
+                <input 
+                  type="text"
+                  required
+                  autoFocus
+                  value={newBoardName}
+                  onChange={(e) => setNewBoardName(e.target.value)}
+                  placeholder="Ex: Recherche CDI / Alternance..."
+                  className="w-full bg-foreground/4 border border-border-color py-2 px-3 rounded-lg text-sm focus:outline-none focus:border-primary transition-colors text-foreground"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-text-muted mb-1.5">Emoji</label>
+                <div className="flex gap-2 flex-wrap">
+                  {['🚀', '💼', '🎯', '⭐', '🔥', '💡', '🏆', '📋', '🎨', '🌟'].map(emoji => (
+                    <button
+                      key={emoji}
+                      type="button"
+                      onClick={() => setNewBoardEmoji(emoji)}
+                      className={`w-9 h-9 rounded-lg flex items-center justify-center text-lg border transition-all cursor-pointer ${
+                        newBoardEmoji === emoji
+                          ? 'border-primary bg-primary/10 text-primary scale-105 shadow-md'
+                          : 'border-border-color bg-foreground/2 text-foreground hover:bg-foreground/5 hover:border-foreground/10'
+                      }`}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 mt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateBoardModal(false)}
+                  className="px-4 py-2 border border-border-color rounded-lg text-xs font-semibold hover:bg-foreground/5 text-foreground cursor-pointer transition-colors"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  disabled={isCreatingBoard || !newBoardName.trim()}
+                  className="bg-primary hover:bg-primary-hover text-white py-2 px-4 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-all duration-150 disabled:opacity-50"
+                >
+                  {isCreatingBoard ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
+                  Créer le tableau
+                </button>
+              </div>
+            </form>
 
           </div>
         </div>

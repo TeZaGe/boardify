@@ -29,6 +29,12 @@ export default async function DashboardBoardPage({
   const columnsData = await JobService.getBoardData(userId, boardId)
   const columns = columnsData as unknown as KanbanColumn[]
 
+  const boards = await db.board.findMany({
+    where: { userId },
+    select: { id: true, name: true, emoji: true },
+    orderBy: { createdAt: 'asc' }
+  })
+
   return (
     <BoardView
       initialColumns={columns}
@@ -36,6 +42,7 @@ export default async function DashboardBoardPage({
       boardId={boardId}
       boardName={board.name}
       boardEmoji={board.emoji ?? '📋'}
+      boards={boards}
     />
   )
 }

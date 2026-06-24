@@ -18,9 +18,14 @@ interface SidebarProps {
     email?: string | null
     image?: string | null
   }
+  stats?: {
+    boards: number
+    companies: number
+    tasks: number
+  }
 }
 
-export function Sidebar({ user }: SidebarProps) {
+export function Sidebar({ user, stats }: SidebarProps) {
   const pathname = usePathname()
   const { theme, setTheme } = useTheme()
   const [collapsed, setCollapsed] = useState(false)
@@ -88,16 +93,26 @@ export function Sidebar({ user }: SidebarProps) {
               const Icon = item.icon
               const active = isActive(item.href)
 
+              const getStatCount = (name: string) => {
+                if (!stats) return null
+                if (name === 'Mes Tableaux') return stats.boards
+                if (name === 'Entreprises') return stats.companies
+                if (name === 'Tâches') return stats.tasks
+                return null
+              }
+
+              const count = getStatCount(item.name)
+
               return (
                 <li key={item.name} className="list-none">
                   <Link
                     href={item.href}
                     title={collapsed ? item.name : undefined}
-                    className={`flex items-center gap-3 text-sm font-medium px-3 py-2.5 rounded-xl transition-all duration-200 group ${
+                    className={`flex items-center gap-3 text-sm font-medium px-3 py-2.5 rounded-xl transition-all duration-200 group border border-transparent ${
                       active
                         ? 'bg-primary/10 border border-primary/15 text-primary'
-                        : 'text-text-muted hover:text-foreground hover:bg-foreground/5 border border-transparent'
-                    } ${collapsed ? 'justify-center' : ''}`}
+                        : 'text-text-muted hover:text-foreground hover:bg-foreground/5'
+                    } ${collapsed ? 'justify-center relative' : ''}`}
                   >
                     <Icon
                       size={17}
@@ -105,10 +120,22 @@ export function Sidebar({ user }: SidebarProps) {
                         active ? 'text-primary' : 'text-text-muted group-hover:text-foreground'
                       }`}
                     />
+                    {collapsed && item.name === 'Tâches' && stats && stats.tasks > 0 && (
+                      <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-primary shadow-sm" />
+                    )}
                     {!collapsed && (
                       <>
                         <span className="flex-1 truncate">{item.name}</span>
-                        {active && <ChevronRight size={13} className="text-primary/50 flex-shrink-0" />}
+                        {count !== null && count > 0 && (
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ml-auto flex-shrink-0 ${
+                            item.name === 'Tâches' 
+                              ? 'bg-primary/20 text-primary' 
+                              : 'bg-foreground/5 text-text-muted'
+                          }`}>
+                            {count}
+                          </span>
+                        )}
+                        {active && (count === null || count === 0) && <ChevronRight size={13} className="text-primary/50 flex-shrink-0" />}
                       </>
                     )}
                   </Link>
