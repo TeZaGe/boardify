@@ -7,11 +7,8 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
 }
 
-const connectionString = process.env.DATABASE_URL
-
-if (!connectionString) {
-  throw new Error('DATABASE_URL environment variable is missing')
-}
+// Fallback dummy connection string for Next.js compilation phase (Docker builds)
+const connectionString = process.env.DATABASE_URL || "postgresql://dummy_user:dummy_password@localhost:5432/dummy_db?schema=public"
 
 let prisma: PrismaClient
 
