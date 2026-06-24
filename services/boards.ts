@@ -82,7 +82,7 @@ export class BoardService {
     })
     const nextOrder = lastBoard ? lastBoard.order + 1 : 0
 
-    return db.$transaction(async (tx) => {
+    return db.$transaction(async (tx: any) => {
       const board = await tx.board.create({
         data: {
           name: data.name,
@@ -153,7 +153,7 @@ export class BoardService {
     if (firstBoard) return firstBoard
 
     // 3. Aucun tableau n'existe — en créer un par défaut
-    return db.$transaction(async (tx) => {
+    return db.$transaction(async (tx: any) => {
       const board = await tx.board.create({
         data: {
           name: "Ma recherche d'emploi",

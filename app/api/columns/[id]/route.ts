@@ -47,7 +47,7 @@ export async function PATCH(
 
     // S'il s'agit d'une mise à jour de l'ordre
     if (order !== undefined && order !== existingColumn.order) {
-      await db.$transaction(async (tx) => {
+      await db.$transaction(async (tx: any) => {
         // Trouve la colonne qui occupe actuellement cet ordre
         const targetColumn = await tx.column.findFirst({
           where: { userId, order }

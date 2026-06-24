@@ -139,7 +139,7 @@ export class JobService {
     }
 
     // Transaction pour mettre à jour la candidature et insérer l'historique
-    return db.$transaction(async (tx) => {
+    return db.$transaction(async (tx: any) => {
       const updatedJob = await tx.jobApplication.update({
         where: { id },
         data: {
