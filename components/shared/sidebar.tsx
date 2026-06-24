@@ -73,7 +73,7 @@ export function Sidebar({ user, stats }: SidebarProps) {
                 <Briefcase size={15} className="text-white" />
               </div>
               <span className="font-display font-bold text-lg tracking-tight bg-gradient-to-r from-foreground to-text-muted bg-clip-text text-transparent truncate">
-                jobby
+                boardify
               </span>
             </Link>
           )}

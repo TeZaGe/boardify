@@ -14,8 +14,8 @@ const outfit = Outfit({
 });
 
 export const metadata: Metadata = {
-  title: "Jobby - Votre CRM de Recherche d'Emploi",
-  description: "Centralisez vos candidatures, suivez vos entretiens et optimisez vos recrutements avec Jobby CRM.",
+  title: "Boardify - Votre CRM de Recherche d'Emploi",
+  description: "Centralisez vos candidatures, suivez vos entretiens et optimisez vos recrutements avec Boardify CRM.",
 };
 
 export default function RootLayout({

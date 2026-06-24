@@ -29,7 +29,7 @@ export default async function LoginPage() {
               <Briefcase size={18} className="text-white" />
             </div>
             <span className="font-display font-bold text-xl tracking-tight text-foreground">
-              jobby
+              boardify
             </span>
           </div>
 
@@ -61,7 +61,7 @@ export default async function LoginPage() {
           </div>
 
           <span className="text-[11px] text-text-muted/50">
-            © 2026 Jobby CRM. Tous droits réservés.
+            © 2026 Boardify CRM. Tous droits réservés.
           </span>
         </div>
 
@@ -73,7 +73,7 @@ export default async function LoginPage() {
               <div className="w-9 h-9 bg-gradient-to-br from-primary to-emerald-500 rounded-lg flex items-center justify-center shadow-lg shadow-primary/20">
                 <Briefcase size={18} className="text-white" />
               </div>
-              <span className="font-display font-bold text-xl tracking-tight">jobby</span>
+              <span className="font-display font-bold text-xl tracking-tight">boardify</span>
             </div>
             <h2 className="font-display font-bold text-2xl mb-2 tracking-tight">
               Content de vous revoir !
