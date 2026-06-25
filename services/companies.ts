@@ -38,7 +38,7 @@ export class CompanyService {
         userId,
         OR: [
           { id: idOrName },
-          { name: { equals: idOrName, mode: 'insensitive' } }
+          { name: idOrName }
         ]
       },
       include: {

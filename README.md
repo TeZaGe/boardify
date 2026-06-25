@@ -1,33 +1,29 @@
-# 🚀 Boardify - CRM de Recherche d'Emploi (Version Locale / Production)
+# 🚀 Boardify - CRM de Recherche d'Emploi (Version Locale 100% Autonome)
 
-Cette branche (`local-prod`) est configurée pour fonctionner de manière **100% locale** et autonome. Elle retire la dépendance à Google OAuth pour s'appuyer uniquement sur l'authentification sécurisée classique (Email / Mot de passe) et utilise la base de données PostgreSQL incluse dans Docker.
+Cette branche (`local-prod`) est configurée pour fonctionner de manière **totalement autonome en local** sans aucune dépendance externe (sans Docker, sans hébergement en ligne, et sans configuration Google Console). 
+
+L'authentification utilise le système d'identification classique sécurisé (Email / Mot de passe) et la base de données est stockée dans un simple fichier local SQLite (`dev.db`).
 
 ---
 
 ## 🛠️ Prérequis
 
 Avant de lancer l'application, assurez-vous d'avoir installé sur votre machine :
-1. [Node.js](https://nodejs.org/) (Version 18 ou supérieure recommandée)
-2. [Docker Desktop](https://www.docker.com/products/docker-desktop/) (pour exécuter la base de données locale)
+* [Node.js](https://nodejs.org/) (Version 18 ou supérieure recommandée)
+
+*Note : **Aucun serveur de base de données ni Docker n'est requis**.*
 
 ---
 
-## 📋 Étapes d'Installation & Lancement Local
+## 📋 Étapes de Lancement Local
 
-Suivez ces instructions pour compiler et exécuter l'application sur votre PC.
+Suivez ces instructions simples pour exécuter l'application sur votre PC.
 
-### 1. Démarrer la base de données locale (Docker)
-Ouvrez votre terminal à la racine du projet et lancez le conteneur de base de données PostgreSQL :
-```bash
-docker compose up -d
-```
-*Le conteneur PostgreSQL démarrera en arrière-plan sur le port local `5433`.*
-
-### 2. Configurer le fichier d'environnement (.env)
+### 1. Configurer le fichier d'environnement (.env)
 Dupliquez le fichier `.env.example` et renommez-le en `.env` à la racine du projet. Remplissez-le avec les paramètres locaux suivants :
 ```env
-# Connexion à la base de données locale Docker PostgreSQL (Port 5433)
-DATABASE_URL="postgresql://postgres:postgres_password@localhost:5433/boardify?schema=public"
+# Connexion à la base de données SQLite locale (Fichier local créé automatiquement)
+DATABASE_URL="file:./dev.db"
 
 # Secret NextAuth.js (Générez une chaîne aléatoire sécurisée)
 AUTH_SECRET="votre_cle_secrete_aleatoire_de_minimum_32_caracteres"
@@ -36,12 +32,18 @@ NEXTAUTH_URL="http://localhost:3000"
 # URL de l'API locale
 NEXT_PUBLIC_API_URL="http://localhost:3000"
 
-# Clé API Google Maps (Recommandé pour afficher les cartes interactives)
+# Clé API Google Maps (Optionnel mais recommandé pour afficher les cartes interactives)
 NEXT_PUBLIC_GOOGLE_MAPS_API_KEY="AIzaSyACZPOdiJamOGaGW1sf27tpPOQYkaQLnI0"
 ```
 
-### 3. Synchroniser la base de données (Prisma)
-Exécutez la commande suivante pour créer les tables de la base de données locales à partir du schéma Prisma :
+### 2. Installer les dépendances
+Installez les packages Node :
+```bash
+npm install
+```
+
+### 3. Initialiser et synchroniser la base de données
+Exécutez la commande suivante pour créer automatiquement le fichier de base de données local `dev.db` et y injecter les tables :
 ```bash
 npx prisma db push
 ```
@@ -65,4 +67,4 @@ Une fois le serveur démarré, ouvrez votre navigateur et accédez à :
 👉 **[http://localhost:3000](http://localhost:3000)**
 
 * Créez votre compte directement en cliquant sur **"Créer un compte"** via le formulaire classique (Email / Mot de passe).
-* Toutes vos données de candidatures, CV, notes et rappels de tâches seront sauvegardées de manière sécurisée en local dans votre conteneur Docker.
+* Toutes vos données de candidatures, CV, notes et rappels de tâches seront sauvegardées de manière sécurisée en local dans le fichier `prisma/dev.db` sur votre PC.

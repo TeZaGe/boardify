@@ -5,7 +5,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
 }
 
 // ==========================================
@@ -248,7 +248,7 @@ model Note {
 model Event {
   id               String         @id @default(cuid())
   title            String
-  type             EventType      @default(TASK)
+  type             String         @default("TASK")
   date             DateTime
   completed        Boolean        @default(false)
   jobApplicationId String?
@@ -279,9 +279,4 @@ model JobApplicationHistory {
   @@index([jobApplicationId])
 }
 
-enum EventType {
-  INTERVIEW
-  FOLLOW_UP
-  TASK
-  MEETING
-}
+

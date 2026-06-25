@@ -87,3 +87,10 @@ contexte-projet.md
 
 # Uploads and cache
 public/uploads/
+
+# SQLite databases
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
