@@ -42,8 +42,8 @@ NEXTAUTH_URL="http://localhost:3000"
 # URL de l'API locale
 NEXT_PUBLIC_API_URL="http://localhost:3000"
 
-# Clé API Google Maps (Optionnel mais recommandé pour afficher les cartes interactives)
-NEXT_PUBLIC_GOOGLE_MAPS_API_KEY="AIzaSyACZPOdiJamOGaGW1sf27tpPOQYkaQLnI0"
+# Clé API Google Maps (Optionnel - requis pour afficher les cartes interactives)
+NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=""
 ```
 
 ### 2. Installer les dépendances
