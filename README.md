@@ -15,9 +15,19 @@ Avant de lancer l'application, assurez-vous d'avoir installé sur votre machine 
 
 ---
 
-## 📋 Étapes de Lancement Local
+## 🚀 Lancement Automatique (Recommandé - Windows)
 
-Suivez ces instructions simples pour exécuter l'application sur votre PC.
+Si vous êtes sous Windows, vous pouvez lancer l'application en un seul clic :
+1. Assurez-vous d'avoir installé [Node.js](https://nodejs.org/).
+2. Double-cliquez sur le fichier **`lancer.bat`** présent à la racine du projet.
+
+*Le script s'occupe de tout : création automatique du fichier `.env`, génération sécurisée de votre clé secrète, installation des dépendances, création de la base de données locale SQLite, compilation et démarrage de l'application !*
+
+---
+
+## 📋 Lancement Manuel (Toutes plateformes)
+
+Si vous préférez exécuter les commandes manuellement :
 
 ### 1. Configurer le fichier d'environnement (.env)
 Dupliquez le fichier `.env.example` et renommez-le en `.env` à la racine du projet. Remplissez-le avec les paramètres locaux suivants :
@@ -67,4 +77,4 @@ Une fois le serveur démarré, ouvrez votre navigateur et accédez à :
 👉 **[http://localhost:3000](http://localhost:3000)**
 
 * Créez votre compte directement en cliquant sur **"Créer un compte"** via le formulaire classique (Email / Mot de passe).
-* Toutes vos données de candidatures, CV, notes et rappels de tâches seront sauvegardées de manière sécurisée en local dans le fichier `prisma/dev.db` sur votre PC.
+* Toutes vos données de candidatures, CV, notes et rappels de tâches seront sauvegardées de manière sécurisée en local dans le fichier `dev.db` de votre projet.
