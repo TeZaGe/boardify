@@ -22,18 +22,15 @@ export default async function TasksPage() {
     }
   })
 
-  // 2. Récupère tous les événements planifiés
   const events = await db.event.findMany({
     where: {
-      jobApplication: {
-        userId,
-        deletedAt: null
-      }
+      userId
     },
     include: {
       jobApplication: {
         include: {
-          company: true
+          company: true,
+          column: true
         }
       }
     },
@@ -42,5 +39,13 @@ export default async function TasksPage() {
     }
   })
 
-  return <TasksView initialJobs={jobs} initialEvents={events} />
+  const defaultBoard = await db.board.findFirst({
+    where: { userId, isDefault: true }
+  }) || await db.board.findFirst({
+    where: { userId }
+  })
+  const defaultBoardId = defaultBoard?.id || ''
+
+  return <TasksView initialJobs={jobs} initialEvents={events} defaultBoardId={defaultBoardId} />
 }
+

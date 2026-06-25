@@ -19,29 +19,9 @@ const addJobSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    // 1. Authentification — Extension Token OU Session Google
-    let userId: string | null = null
-
-    // Priorité 1 : Token d'extension (pour l'extension de navigateur)
-    const authHeader = request.headers.get('Authorization')
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.substring(7)
-      const userByToken = await db.user.findUnique({
-        where: { extensionToken: token },
-        select: { id: true }
-      })
-      if (userByToken) {
-        userId = userByToken.id
-      }
-    }
-
-    // Priorité 2 : Session NextAuth
-    if (!userId) {
-      const session = await auth()
-      if (session?.user?.id) {
-        userId = session.user.id
-      }
-    }
+    // 1. Authentification — Session NextAuth
+    const session = await auth()
+    const userId = session?.user?.id
 
     if (!userId) {
       return NextResponse.json(

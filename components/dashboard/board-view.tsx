@@ -32,6 +32,7 @@ import {
   Eye
 } from 'lucide-react'
 import Link from 'next/link'
+import { AddressAutocomplete } from '@/components/shared/address-autocomplete'
 import { KanbanColumn } from '@/types'
 
 // Type local de candidature pour le typage interne du state
@@ -44,9 +45,10 @@ interface BoardViewProps {
   boardName?: string
   boardEmoji?: string
   boards?: { id: string; name: string; emoji: string | null }[]
+  homeAddress?: string | null
 }
 
-export function BoardView({ initialColumns, userId, boardId, boardName, boardEmoji, boards = [] }: BoardViewProps) {
+export function BoardView({ initialColumns, userId, boardId, boardName, boardEmoji, boards = [], homeAddress = null }: BoardViewProps) {
   const router = useRouter()
   
   // États de données et filtres
@@ -142,6 +144,22 @@ export function BoardView({ initialColumns, userId, boardId, boardName, boardEmo
       }
     }
   }, [initialColumns])
+
+  // Ouvrir automatiquement la modale de détails si un jobId est spécifié dans l'URL
+  React.useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search)
+      const jobId = params.get('jobId')
+      if (jobId) {
+        const foundJob = columns
+          .flatMap(c => c.jobApplications)
+          .find(j => j.id === jobId)
+        if (foundJob) {
+          handleOpenModal(foundJob as any)
+        }
+      }
+    }
+  }, [columns])
 
   const loadExistingCvs = async () => {
     try {
@@ -1033,9 +1051,9 @@ export function BoardView({ initialColumns, userId, boardId, boardName, boardEmo
                 onChange={(e) => setSelectedTagFilter(e.target.value)}
                 className="bg-foreground/4 border border-border-color py-2 px-3 rounded-xl text-xs text-foreground focus:outline-none focus:border-primary cursor-pointer transition-all duration-200"
               >
-                <option value="">Tous les tags</option>
+                <option value="" className="bg-bg-side text-slate-900 dark:text-slate-100">Tous les tags</option>
                 {allUniqueTags.map(tag => (
-                  <option key={tag} value={tag}>{tag}</option>
+                  <option key={tag} value={tag} className="bg-bg-side text-slate-900 dark:text-slate-100">{tag}</option>
                 ))}
               </select>
             </div>
@@ -1114,9 +1132,9 @@ export function BoardView({ initialColumns, userId, boardId, boardName, boardEmo
               onChange={(e) => setImportSource(e.target.value as any)}
               className="w-full bg-foreground/4 border border-border-color py-2.5 px-4 rounded-xl text-sm text-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all duration-200 cursor-pointer"
             >
-              <option value="indeed" className="bg-bg-side text-foreground">Indeed</option>
-              <option value="hellowork" className="bg-bg-side text-foreground">HelloWork</option>
-              <option value="linkedin" className="bg-bg-side text-foreground">LinkedIn</option>
+              <option value="indeed" className="bg-bg-side text-slate-900 dark:text-slate-100">Indeed</option>
+              <option value="hellowork" className="bg-bg-side text-slate-900 dark:text-slate-100">HelloWork</option>
+              <option value="linkedin" className="bg-bg-side text-slate-900 dark:text-slate-100">LinkedIn</option>
             </select>
           </div>
 
@@ -1237,14 +1255,14 @@ export function BoardView({ initialColumns, userId, boardId, boardName, boardEmo
                                   }}
                                   className="w-full bg-bg-side border border-border-color py-1 px-2 rounded-md font-medium text-foreground focus:outline-none cursor-pointer text-xs"
                                 >
-                                  <option value="ignore" className="bg-bg-side text-foreground">❌ Ignorer</option>
-                                  <option value="title" className="bg-bg-side text-foreground">💼 Poste (Requis)</option>
-                                  <option value="company" className="bg-bg-side text-foreground">🏢 Entreprise (Requis)</option>
-                                  <option value="location" className="bg-bg-side text-foreground">📍 Lieu</option>
-                                  <option value="salary" className="bg-bg-side text-foreground">💰 Salaire</option>
-                                  <option value="url" className="bg-bg-side text-foreground">🔗 Lien</option>
-                                  <option value="description" className="bg-bg-side text-foreground">📝 Description</option>
-                                  <option value="source" className="bg-bg-side text-foreground">📣 Source</option>
+                                  <option value="ignore" className="bg-bg-side text-slate-900 dark:text-slate-100">❌ Ignorer</option>
+                                  <option value="title" className="bg-bg-side text-slate-900 dark:text-slate-100">💼 Poste (Requis)</option>
+                                  <option value="company" className="bg-bg-side text-slate-900 dark:text-slate-100">🏢 Entreprise (Requis)</option>
+                                  <option value="location" className="bg-bg-side text-slate-900 dark:text-slate-100">📍 Lieu</option>
+                                  <option value="salary" className="bg-bg-side text-slate-900 dark:text-slate-100">💰 Salaire</option>
+                                  <option value="url" className="bg-bg-side text-slate-900 dark:text-slate-100">🔗 Lien</option>
+                                  <option value="description" className="bg-bg-side text-slate-900 dark:text-slate-100">📝 Description</option>
+                                  <option value="source" className="bg-bg-side text-slate-900 dark:text-slate-100">📣 Source</option>
                                 </select>
                               </div>
                             </th>
@@ -1602,12 +1620,11 @@ export function BoardView({ initialColumns, userId, boardId, boardName, boardEmo
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <label className="block text-[11px] font-semibold text-text-muted mb-1.5 font-display font-medium">Localisation</label>
-                        <input 
-                          type="text"
+                        <AddressAutocomplete
                           value={editLocation}
-                          onChange={(e) => setEditLocation(e.target.value)}
-                          className="w-full bg-foreground/4 border border-border-color py-2 px-3 rounded-lg text-sm focus:outline-none focus:border-primary transition-colors text-foreground"
+                          onChange={setEditLocation}
                           placeholder="Ex: Paris / Remote"
+                          className="w-full bg-foreground/4 border border-border-color py-2 px-3 rounded-lg text-sm focus:outline-none focus:border-primary transition-colors text-foreground"
                         />
                       </div>
                       <div>
@@ -1622,6 +1639,46 @@ export function BoardView({ initialColumns, userId, boardId, boardName, boardEmo
                       </div>
                     </div>
 
+                    {/* Google Maps Embed & Route */}
+                    {selectedJob.location && !/remote|télétravail|telework|home/i.test(selectedJob.location) && (
+                      <div className="flex flex-col gap-2 bg-foreground/2 border border-border-color p-4 rounded-xl">
+                        <div className="flex justify-between items-center">
+                          <label className="block text-[11px] font-semibold text-text-muted font-display font-medium">
+                            {homeAddress ? "Itinéraire depuis votre domicile" : "Localisation sur la carte"}
+                          </label>
+                          <a
+                            href={homeAddress
+                              ? `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(homeAddress)}&destination=${encodeURIComponent(`${selectedJob.company.name} ${selectedJob.location}`)}`
+                              : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${selectedJob.company.name} ${selectedJob.location}`)}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-[11px] text-purple-400 hover:text-purple-300 font-semibold flex items-center gap-1 transition-colors"
+                          >
+                            📍 Voir sur Google Maps ↗
+                          </a>
+                        </div>
+                        <div className="relative w-full h-[220px] rounded-lg overflow-hidden border border-border-color bg-foreground/3">
+                          <iframe
+                            width="100%"
+                            height="100%"
+                            style={{ border: 0 }}
+                            loading="lazy"
+                            allowFullScreen
+                            referrerPolicy="no-referrer-when-downgrade"
+                            src={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+                              ? (homeAddress
+                                ? `https://www.google.com/maps/embed/v1/directions?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&origin=${encodeURIComponent(homeAddress)}&destination=${encodeURIComponent(`${selectedJob.company.name} ${selectedJob.location}`)}`
+                                : `https://www.google.com/maps/embed/v1/place?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&q=${encodeURIComponent(`${selectedJob.company.name} ${selectedJob.location}`)}`)
+                              : (homeAddress 
+                                ? `https://maps.google.com/maps?saddr=${encodeURIComponent(homeAddress)}&daddr=${encodeURIComponent(`${selectedJob.company.name} ${selectedJob.location}`)}&t=&z=12&ie=UTF8&iwloc=&output=embed`
+                                : `https://maps.google.com/maps?q=${encodeURIComponent(`${selectedJob.company.name} ${selectedJob.location}`)}&t=&z=14&ie=UTF8&iwloc=&output=embed`
+                              )
+                            }
+                          />
+                        </div>
+                      </div>
+                    )}
+
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                       <div>
                         <label className="block text-[11px] font-semibold text-text-muted mb-1.5 font-display font-medium">Étape (Colonne Kanban)</label>
@@ -1631,7 +1688,7 @@ export function BoardView({ initialColumns, userId, boardId, boardName, boardEmo
                           className="w-full bg-foreground/4 border border-border-color py-2.5 px-3 rounded-lg text-sm text-foreground focus:outline-none focus:border-primary cursor-pointer transition-colors"
                         >
                           {columns.map(c => (
-                            <option key={c.id} value={c.id} className="bg-bg-side text-foreground">{c.name}</option>
+                            <option key={c.id} value={c.id} className="bg-bg-side text-slate-900 dark:text-slate-100">{c.name}</option>
                           ))}
                         </select>
                       </div>
@@ -1934,9 +1991,9 @@ export function BoardView({ initialColumns, userId, boardId, boardName, boardEmo
                                   onChange={(e) => setSelectedExistingCvUrl(e.target.value)}
                                   className="flex-1 bg-background border border-border-color rounded-lg text-[10px] px-2 py-1 focus:outline-none focus:border-primary text-foreground min-w-0"
                                 >
-                                  <option value="">Sélectionner...</option>
+                                  <option value="" className="bg-bg-side text-slate-900 dark:text-slate-100">Sélectionner...</option>
                                   {existingCvs.map(cv => (
-                                    <option key={cv.url} value={cv.url}>{cv.name}</option>
+                                    <option key={cv.url} value={cv.url} className="bg-bg-side text-slate-900 dark:text-slate-100">{cv.name}</option>
                                   ))}
                                 </select>
                                 <button

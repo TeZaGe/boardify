@@ -51,6 +51,19 @@ export function AnalyticsView() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [mounted, setMounted] = useState(false)
+  const [cvA, setCvA] = useState<string>('')
+  const [cvB, setCvB] = useState<string>('')
+
+  useEffect(() => {
+    if (data && data.byCv.length > 0) {
+      setCvA(data.byCv[0].name)
+      if (data.byCv.length > 1) {
+        setCvB(data.byCv[1].name)
+      } else {
+        setCvB(data.byCv[0].name)
+      }
+    }
+  }, [data])
 
   useEffect(() => {
     setMounted(true)
@@ -335,6 +348,175 @@ export function AnalyticsView() {
                   </tbody>
                 </table>
               </div>
+
+              {/* Comparateur Face-à-Face Dynamique */}
+              {data.byCv.length > 1 && (
+                <div className="border-t border-border-color/60 pt-6 mt-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5">
+                    <div>
+                      <h4 className="font-display font-bold text-sm text-text-main flex items-center gap-1.5">
+                        <Award size={15} className="text-primary" />
+                        Face-à-Face Comparateur
+                      </h4>
+                      <p className="text-text-muted text-[11px]">Sélectionnez deux CVs pour analyser directement leurs indicateurs d&apos;efficacité</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={cvA}
+                        onChange={(e) => setCvA(e.target.value)}
+                        className="bg-bg-side border border-border-color text-foreground text-xs py-1.5 px-2.5 rounded-xl focus:outline-none focus:border-primary max-w-[130px] md:max-w-[180px] truncate cursor-pointer"
+                      >
+                        {data.byCv.map((c) => (
+                          <option key={c.name} value={c.name} className="bg-bg-side text-slate-900 dark:text-slate-100">{c.name}</option>
+                        ))}
+                      </select>
+                      <span className="text-text-muted text-[10px] font-bold uppercase px-1">VS</span>
+                      <select
+                        value={cvB}
+                        onChange={(e) => setCvB(e.target.value)}
+                        className="bg-bg-side border border-border-color text-foreground text-xs py-1.5 px-2.5 rounded-xl focus:outline-none focus:border-primary max-w-[130px] md:max-w-[180px] truncate cursor-pointer"
+                      >
+                        {data.byCv.map((c) => (
+                          <option key={c.name} value={c.name} className="bg-bg-side text-slate-900 dark:text-slate-100">{c.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {(() => {
+                    const itemA = data.byCv.find(c => c.name === cvA)
+                    const itemB = data.byCv.find(c => c.name === cvB)
+                    if (!itemA || !itemB) return null
+
+                    const rateOffersA = itemA.total > 0 ? Math.round((itemA.offers / itemA.total) * 100) : 0
+                    const rateOffersB = itemB.total > 0 ? Math.round((itemB.offers / itemB.total) * 100) : 0
+
+                    const winner = itemA.successRate > itemB.successRate ? 'A' : itemB.successRate > itemA.successRate ? 'B' : 'draw'
+
+                    return (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* CV A Card */}
+                        <div className={`border p-4 rounded-xl flex flex-col justify-between transition-all ${
+                          winner === 'A' 
+                            ? 'bg-primary/5 border-emerald-500/20 shadow-md shadow-emerald-500/2' 
+                            : 'bg-foreground/2 border-border-color'
+                        }`}>
+                          <div>
+                            <div className="flex justify-between items-start mb-2">
+                              <span className="text-[9px] uppercase font-bold text-text-muted tracking-wider">Profil A</span>
+                              {winner === 'A' && (
+                                <span className="bg-emerald-500/10 text-emerald-400 text-[10px] font-bold py-0.5 px-2.5 rounded-full flex items-center gap-1">
+                                  🏆 Meilleur Taux
+                                </span>
+                              )}
+                            </div>
+                            <h5 className="font-semibold text-xs text-text-main truncate max-w-[280px]" title={itemA.name}>{itemA.name}</h5>
+                          </div>
+
+                          <div className="grid grid-cols-4 gap-2 mt-4 border-t border-border-color/60 pt-3">
+                            <div className="text-center">
+                              <span className="text-[9px] text-text-muted uppercase font-bold block">Envois</span>
+                              <span className="text-xs font-semibold text-text-main">{itemA.total}</span>
+                            </div>
+                            <div className="text-center">
+                              <span className="text-[9px] text-text-muted uppercase font-bold block">Entretiens</span>
+                              <span className="text-xs font-semibold text-amber-400">{itemA.interviews}</span>
+                            </div>
+                            <div className="text-center">
+                              <span className="text-[9px] text-text-muted uppercase font-bold block">Offres</span>
+                              <span className="text-xs font-semibold text-emerald-400">{itemA.offers}</span>
+                            </div>
+                            <div className="text-center">
+                              <span className="text-[9px] text-text-muted uppercase font-bold block">Refus</span>
+                              <span className="text-xs font-semibold text-red-400">{itemA.refusals}</span>
+                            </div>
+                          </div>
+
+                          <div className="space-y-2 mt-4 pt-3 border-t border-border-color/40">
+                            <div>
+                              <div className="flex justify-between text-[10px] font-semibold mb-1">
+                                <span className="text-text-muted">Taux d&apos;Entretien</span>
+                                <span className="text-amber-400">{itemA.successRate}%</span>
+                              </div>
+                              <div className="h-1.5 bg-foreground/5 rounded-full overflow-hidden">
+                                <div className="h-full bg-amber-500 rounded-full" style={{ width: `${itemA.successRate}%` }} />
+                              </div>
+                            </div>
+                            <div>
+                              <div className="flex justify-between text-[10px] font-semibold mb-1">
+                                <span className="text-text-muted">Taux d&apos;Offres</span>
+                                <span className="text-emerald-400">{rateOffersA}%</span>
+                              </div>
+                              <div className="h-1.5 bg-foreground/5 rounded-full overflow-hidden">
+                                <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${rateOffersA}%` }} />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* CV B Card */}
+                        <div className={`border p-4 rounded-xl flex flex-col justify-between transition-all ${
+                          winner === 'B' 
+                            ? 'bg-primary/5 border-emerald-500/20 shadow-md shadow-emerald-500/2' 
+                            : 'bg-foreground/2 border-border-color'
+                        }`}>
+                          <div>
+                            <div className="flex justify-between items-start mb-2">
+                              <span className="text-[9px] uppercase font-bold text-text-muted tracking-wider">Profil B</span>
+                              {winner === 'B' && (
+                                <span className="bg-emerald-500/10 text-emerald-400 text-[10px] font-bold py-0.5 px-2.5 rounded-full flex items-center gap-1">
+                                  🏆 Meilleur Taux
+                                </span>
+                              )}
+                            </div>
+                            <h5 className="font-semibold text-xs text-text-main truncate max-w-[280px]" title={itemB.name}>{itemB.name}</h5>
+                          </div>
+
+                          <div className="grid grid-cols-4 gap-2 mt-4 border-t border-border-color/60 pt-3">
+                            <div className="text-center">
+                              <span className="text-[9px] text-text-muted uppercase font-bold block">Envois</span>
+                              <span className="text-xs font-semibold text-text-main">{itemB.total}</span>
+                            </div>
+                            <div className="text-center">
+                              <span className="text-[9px] text-text-muted uppercase font-bold block">Entretiens</span>
+                              <span className="text-xs font-semibold text-amber-400">{itemB.interviews}</span>
+                            </div>
+                            <div className="text-center">
+                              <span className="text-[9px] text-text-muted uppercase font-bold block">Offres</span>
+                              <span className="text-xs font-semibold text-emerald-400">{itemB.offers}</span>
+                            </div>
+                            <div className="text-center">
+                              <span className="text-[9px] text-text-muted uppercase font-bold block">Refus</span>
+                              <span className="text-xs font-semibold text-red-400">{itemB.refusals}</span>
+                            </div>
+                          </div>
+
+                          <div className="space-y-2 mt-4 pt-3 border-t border-border-color/40">
+                            <div>
+                              <div className="flex justify-between text-[10px] font-semibold mb-1">
+                                <span className="text-text-muted">Taux d&apos;Entretien</span>
+                                <span className="text-amber-400">{itemB.successRate}%</span>
+                              </div>
+                              <div className="h-1.5 bg-foreground/5 rounded-full overflow-hidden">
+                                <div className="h-full bg-amber-500 rounded-full" style={{ width: `${itemB.successRate}%` }} />
+                              </div>
+                            </div>
+                            <div>
+                              <div className="flex justify-between text-[10px] font-semibold mb-1">
+                                <span className="text-text-muted">Taux d&apos;Offres</span>
+                                <span className="text-emerald-400">{rateOffersB}%</span>
+                              </div>
+                              <div className="h-1.5 bg-foreground/5 rounded-full overflow-hidden">
+                                <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${rateOffersB}%` }} />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })()}
+                </div>
+              )}
             </div>
           )}
         </div>

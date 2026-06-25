@@ -18,11 +18,16 @@ export default async function DashboardBoardPage({
 
   const { boardId } = await params
 
-  // Vérifie que le board appartient bien à l'utilisateur
-  const board = await db.board.findUnique({
-    where: { id: boardId, userId },
-    select: { id: true, name: true, emoji: true }
-  })
+  const [board, user] = await Promise.all([
+    db.board.findUnique({
+      where: { id: boardId, userId },
+      select: { id: true, name: true, emoji: true }
+    }),
+    db.user.findUnique({
+      where: { id: userId },
+      select: { homeAddress: true }
+    })
+  ])
 
   if (!board) redirect('/boards')
 
@@ -43,6 +48,7 @@ export default async function DashboardBoardPage({
       boardName={board.name}
       boardEmoji={board.emoji ?? '📋'}
       boards={boards}
+      homeAddress={user?.homeAddress ?? null}
     />
   )
 }

@@ -11,10 +11,9 @@ export default async function SettingsPage() {
 
   const userId = session.user.id
 
-  // Récupérer le token d'extension
   const user = await db.user.findUnique({
     where: { id: userId },
-    select: { extensionToken: true, name: true, email: true, image: true }
+    select: { name: true, email: true, image: true, homeAddress: true, minSalary: true, maxSalary: true }
   })
 
   return (
@@ -23,7 +22,9 @@ export default async function SettingsPage() {
         name: user?.name ?? session.user?.name ?? null,
         email: user?.email ?? session.user?.email ?? null,
         image: user?.image ?? session.user?.image ?? null,
-        extensionToken: user?.extensionToken ?? null,
+        homeAddress: user?.homeAddress ?? null,
+        minSalary: user?.minSalary ?? 30,
+        maxSalary: user?.maxSalary ?? 80,
       }}
     />
   )
