@@ -79,3 +79,11 @@ next-env.d.ts
 pgdata/
 
 /app/generated/prisma
+
+# Personal/Agent config files
+AGENTS.md
+CLAUDE.md
+contexte-projet.md
+
+# Uploads and cache
+public/uploads/
