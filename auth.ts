@@ -82,9 +82,24 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       }
       return token
     },
-    session({ session, token }) {
+    async session({ session, token }) {
       if (session.user && token) {
-        session.user.id = token.id as string
+        const userId = token.id as string
+        const userExists = await db.user.findUnique({
+          where: { id: userId },
+          select: { id: true }
+        })
+        
+        if (!userExists) {
+          // Si l'utilisateur n'existe pas en base (ex: BDD réinitialisée)
+          // on invalide la session en vidant l'utilisateur
+          return {
+            ...session,
+            user: undefined as any
+          }
+        }
+        
+        session.user.id = userId
       }
       return session
     },

@@ -94,3 +94,6 @@ public/uploads/
 *.db-shm
 *.db-wal
 
+# Desktop build output
+/dist
+

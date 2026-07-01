@@ -694,7 +694,8 @@ export function BoardView({ initialColumns, userId, boardId, boardName, boardEmo
             description: jobData.description || null,
             url: jobData.url || null,
             salary: jobData.salary || null,
-            source: jobData.source || (scraped ? 'Import Excel (Scrapé)' : 'Import Excel')
+            source: jobData.source || (scraped ? 'Import Excel (Scrapé)' : 'Import Excel'),
+            columnId: initialColumns[0]?.id
           })
         })
 
@@ -742,7 +743,8 @@ export function BoardView({ initialColumns, userId, boardId, boardName, boardEmo
           description: jobData.description,
           url: jobData.url,
           salary: jobData.salary,
-          source: jobData.source
+          source: jobData.source,
+          columnId: initialColumns[0]?.id
         })
       })
 
